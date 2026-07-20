@@ -134,7 +134,7 @@ function buildReport(data) {
   section h2 { font-size: 14px; margin: 10px 16px; }
   section .note { color: var(--muted); font-size: 12px; margin: -6px 16px 10px; }
   .scroller { overflow-x: auto; }
-  table { border-collapse: collapse; width: 100%; min-width: 900px; }
+  table { border-collapse: collapse; width: 100%; min-width: 980px; }
   th, td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--grid); white-space: nowrap; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; border-top: none; }
   th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -153,6 +153,10 @@ function buildReport(data) {
   .bar .d { background: var(--draw); }
   .bar .a { background: var(--away); border-radius: 0 4px 4px 0; }
   .form { font-family: inherit; font-size: 12px; letter-spacing: 1px; color: var(--ink-2); }
+  .sideDot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; border: 1px solid var(--border); }
+  .sideDot.h { background: var(--home); } .sideDot.d { background: var(--draw); } .sideDot.a { background: var(--away); }
+  .homeaway { color: var(--ink-2); font-size: 11px; font-weight: 400; margin-left: 5px; }
+  .ringed { outline: 1.5px solid var(--good); border-radius: 6px; padding: 1px 5px; }
   .empty { padding: 18px 16px; color: var(--ink-2); }
   .chart { padding: 4px 16px 12px; }
   .chart svg { width: 100%; height: 150px; display: block; }
@@ -211,6 +215,11 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&a
 const sportLabel = (s) => DATA.sportLabels[s] || s;
 const kickoff = (ts) => new Date(ts * 1000).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const outcomeLabel = (g, name) => name === '1' ? g.home : name === '2' ? g.away : 'Draw';
+const sideClass = (name) => name === '1' ? 'h' : name === '2' ? 'a' : 'd';
+const sideTag = (name) => name === '1' ? 'home' : name === '2' ? 'away' : 'draw';
+const pickLabel = (g, name) =>
+  '<span class="sideDot ' + sideClass(name) + '"></span>' + esc(outcomeLabel(g, name))
+  + '<span class="homeaway">(' + sideTag(name) + ')</span>';
 const WARN_TEXT = { drift: '⚠ price drifting out', absences: '⚠ key absences', sharp: '⚠ Pinnacle sides with bet365' };
 
 let sportFilter = null, query = '', scope = 'all';
@@ -269,9 +278,9 @@ function renderFlags() {
     + '<th class="num">Market %</th><th class="num">Crowd %</th><th>Form (H v A)</th><th class="num">Model %</th><th class="num">EV</th></tr>'
     + rows.map(({ g, o }) =>
       '<tr><td>' + kickoff(g.startTimestamp) + '<div class="dim">' + startsIn(g.startTimestamp) + '</div></td>' + matchCell(g)
-      + '<td class="pick">' + esc(outcomeLabel(g, o.name)) + warnBadges(o)
+      + '<td class="pick">' + pickLabel(g, o.name) + warnBadges(o)
       + (o.pinnacle ? '<div class="meta">Pinnacle ' + fmtPct(o.pinnacle.prob) + ' @ ' + fmtOdds(o.pinnacle.odds) + '</div>' : '') + '</td>'
-      + '<td class="num">' + fmtOdds(o.odds) + ' ' + driftCell(o) + '</td>'
+      + '<td class="num"><span class="ringed">' + fmtOdds(o.odds) + '</span> ' + driftCell(o) + '</td>'
       + '<td class="num">' + fmtPct(o.marketProb) + '</td>'
       + '<td class="num" title="Raw ' + fmtPct(o.voteShareRaw) + ' of ' + g.totalVotes.toLocaleString() + ' votes, debiased by fanbase">' + fmtPct(o.voteShare) + '</td>'
       + '<td>' + formCell(g) + '</td>'
@@ -285,18 +294,31 @@ function renderAll() {
   const table = document.getElementById('all');
   document.getElementById('allEmpty').hidden = games.length > 0;
   table.hidden = games.length === 0;
-  const oddsCell = (g, n) => {
+  const lean = (g) => {
+    const voted = g.outcomes.filter(o => o.voteShare !== null);
+    if (!voted.length) return null;
+    return voted.reduce((best, o) => (o.ev > best.ev ? o : best));
+  };
+  const oddsCell = (g, n, leanOutcome) => {
     const o = g.outcomes.find(x => x.name === n);
-    return '<td class="num">' + (o ? fmtOdds(o.odds) : '—') + '</td>';
+    if (!o) return '<td class="num">—</td>';
+    const ringed = leanOutcome && o.name === leanOutcome.name && o.flagged;
+    return '<td class="num">' + (ringed ? '<span class="ringed">' + fmtOdds(o.odds) + '</span>' : fmtOdds(o.odds)) + '</td>';
+  };
+  const leanCell = (g, leanOutcome) => {
+    if (!leanOutcome || leanOutcome.ev <= 0) return '<td><span class="dim">—</span></td>';
+    return '<td class="pick">' + pickLabel(g, leanOutcome.name)
+      + ' <span class="' + (leanOutcome.flagged ? 'badge' : 'dim') + '">+' + fmtPct(leanOutcome.ev) + '</span></td>';
   };
   table.innerHTML = '<tr><th>Kickoff</th><th>Match</th><th class="num">1</th><th class="num">X</th><th class="num">2</th>'
-    + '<th>Crowd vote</th><th>Form</th><th class="num">Best EV</th></tr>'
-    + games.map(g =>
-      '<tr><td>' + kickoff(g.startTimestamp) + '</td>' + matchCell(g)
-      + oddsCell(g, '1') + oddsCell(g, 'X') + oddsCell(g, '2')
-      + '<td>' + voteBar(g) + '</td><td>' + formCell(g) + '</td>'
-      + '<td class="num">' + (g.bestEv > -1 ? (g.bestEv >= 0 ? '+' : '') + fmtPct(g.bestEv) : '<span class="dim">—</span>') + '</td></tr>'
-    ).join('');
+    + '<th>Model pick</th><th>Crowd vote</th><th>Form</th></tr>'
+    + games.map(g => {
+      const l = lean(g);
+      return '<tr><td>' + kickoff(g.startTimestamp) + '</td>' + matchCell(g)
+        + oddsCell(g, '1', l) + oddsCell(g, 'X', l) + oddsCell(g, '2', l)
+        + leanCell(g, l)
+        + '<td>' + voteBar(g) + '</td><td>' + formCell(g) + '</td></tr>';
+    }).join('');
 }
 
 function renderRecord() {
@@ -333,7 +355,8 @@ function renderRecord() {
       '<tr><td>' + kickoff(p.startTimestamp) + '</td>'
       + '<td><div class="teams"><a href="' + esc(p.url) + '" target="_blank" rel="noopener">' + esc(p.home) + ' v ' + esc(p.away) + '</a></div>'
       + '<div class="meta">' + esc(sportLabel(p.sport)) + ' · ' + esc(p.tournament) + (p.finalScore ? ' · ' + esc(p.finalScore) : '') + '</div></td>'
-      + '<td class="pick">' + esc(p.pickTeam) + '</td>'
+      + '<td class="pick"><span class="sideDot ' + sideClass(p.outcome) + '"></span>' + esc(p.pickTeam)
+      + '<span class="homeaway">(' + sideTag(p.outcome) + ')</span></td>'
       + '<td class="num">' + fmtOdds(p.odds) + '</td>'
       + '<td class="num">' + fmtOdds(p.closingOdds) + '</td>'
       + '<td class="num">' + (p.clv == null ? '—' : (p.clv >= 0 ? '+' : '') + fmtPct(p.clv)) + '</td>'
