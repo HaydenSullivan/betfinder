@@ -79,7 +79,12 @@ async function collectGames(client, config, windowHours) {
 
   // 2) Event details (cached per day on disk) for kickoff times and teams.
   const allIds = [...marketsByEvent.keys()];
-  const uncachedIds = allIds.filter((id) => !cache.get(id));
+  // Entries cached by an older parser version lack the follower fields the
+  // fanbase debiasing needs — treat them as uncached so they refetch once.
+  const uncachedIds = allIds.filter((id) => {
+    const cached = cache.get(id);
+    return !cached || !('homeFollowers' in cached);
+  });
   if (uncachedIds.length) {
     const paths = uncachedIds.map((id) => `/api/v1/event/${id}`);
     const { results, errors } = await client.getMany(paths, progressLine('event details'));
