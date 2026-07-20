@@ -175,8 +175,8 @@ async function main() {
       requestDelayMs: config.requestDelayMs,
     });
     log('launching browser…');
-    const exe = await client.start();
-    log(`  using ${exe}`);
+    const { executablePath, base } = await client.start();
+    log(`  using ${executablePath} via ${base}`);
     try {
       await settle(client, log);
       calibration = calibrate(ledger.loadAllEntries(), config, log);

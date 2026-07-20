@@ -4,7 +4,10 @@
 const fs = require('fs');
 const puppeteer = require('puppeteer-core');
 
-const BASE = 'https://www.sofascore.com';
+// Same API is served from several hostnames with independent WAF rules; try each
+// until one accepts this machine. All later requests are same-origin fetches
+// against whichever host warmed up.
+const BASES = ['https://www.sofascore.com', 'https://api.sofascore.com', 'https://api.sofascore.app'];
 const WARMUP_PATH = '/api/v1/odds/providers/AU/web';
 
 const CHROME_CANDIDATES = [
@@ -56,15 +59,19 @@ class BrowserClient {
     this.page = await this.browser.newPage();
     const ua = await this.browser.userAgent();
     await this.page.setUserAgent(ua.replace(/HeadlessChrome/i, 'Chrome'));
-    const response = await this.page.goto(BASE + WARMUP_PATH, {
-      waitUntil: 'domcontentloaded',
-      timeout: 45000,
-    });
-    if (!response || !response.ok()) {
+    const statuses = [];
+    for (const base of BASES) {
+      const response = await this.page
+        .goto(base + WARMUP_PATH, { waitUntil: 'domcontentloaded', timeout: 45000 })
+        .catch(() => null);
       const status = response ? response.status() : 'no response';
-      throw new Error(`Sofascore warmup request failed (${status}). The site may be blocking this machine.`);
+      if (response && response.ok()) {
+        this.base = base;
+        return { executablePath, base };
+      }
+      statuses.push(`${base}: ${status}`);
     }
-    return executablePath;
+    throw new Error(`Sofascore warmup failed on every host (${statuses.join(', ')}). The site is blocking this machine.`);
   }
 
   // Fetch a Sofascore API path (e.g. "/api/v1/event/123/votes") as parsed JSON.
