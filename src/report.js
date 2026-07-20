@@ -294,28 +294,26 @@ function renderAll() {
   const table = document.getElementById('all');
   document.getElementById('allEmpty').hidden = games.length > 0;
   table.hidden = games.length === 0;
-  const lean = (g) => {
-    const voted = g.outcomes.filter(o => o.voteShare !== null);
-    if (!voted.length) return null;
-    return voted.reduce((best, o) => (o.ev > best.ev ? o : best));
-  };
-  const oddsCell = (g, n, leanOutcome) => {
+  // The model's pick = the outcome it gives the highest win probability.
+  const lean = (g) => g.outcomes.reduce((best, o) => (o.estProb > best.estProb ? o : best));
+  const oddsCell = (g, n) => {
     const o = g.outcomes.find(x => x.name === n);
     if (!o) return '<td class="num">—</td>';
-    const ringed = leanOutcome && o.name === leanOutcome.name && o.flagged;
-    return '<td class="num">' + (ringed ? '<span class="ringed">' + fmtOdds(o.odds) + '</span>' : fmtOdds(o.odds)) + '</td>';
+    return '<td class="num">' + (o.flagged ? '<span class="ringed">' + fmtOdds(o.odds) + '</span>' : fmtOdds(o.odds)) + '</td>';
   };
   const leanCell = (g, leanOutcome) => {
-    if (!leanOutcome || leanOutcome.ev <= 0) return '<td><span class="dim">—</span></td>';
+    const flaggedPick = g.outcomes.find(o => o.flagged);
     return '<td class="pick">' + pickLabel(g, leanOutcome.name)
-      + ' <span class="' + (leanOutcome.flagged ? 'badge' : 'dim') + '">+' + fmtPct(leanOutcome.ev) + '</span></td>';
+      + ' <span class="dim" title="Model win probability">' + fmtPct(leanOutcome.estProb) + '</span>'
+      + (flaggedPick ? ' <span class="badge" title="Flagged value: ' + esc(outcomeLabel(g, flaggedPick.name)) + '">↑ +' + fmtPct(flaggedPick.ev) + '</span>' : '')
+      + '</td>';
   };
   table.innerHTML = '<tr><th>Kickoff</th><th>Match</th><th class="num">1</th><th class="num">X</th><th class="num">2</th>'
     + '<th>Model pick</th><th>Crowd vote</th><th>Form</th></tr>'
     + games.map(g => {
       const l = lean(g);
       return '<tr><td>' + kickoff(g.startTimestamp) + '</td>' + matchCell(g)
-        + oddsCell(g, '1', l) + oddsCell(g, 'X', l) + oddsCell(g, '2', l)
+        + oddsCell(g, '1') + oddsCell(g, 'X') + oddsCell(g, '2')
         + leanCell(g, l)
         + '<td>' + voteBar(g) + '</td><td>' + formCell(g) + '</td></tr>';
     }).join('');
