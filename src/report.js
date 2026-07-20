@@ -158,6 +158,7 @@ function buildReport(data) {
   .homeaway { color: var(--ink-2); font-size: 11px; font-weight: 400; margin-left: 5px; }
   .ringed { outline: 1.5px solid var(--good); border-radius: 6px; padding: 1px 5px; }
   .empty { padding: 18px 16px; color: var(--ink-2); }
+  .staleWarn { border: 1px solid var(--warn); color: var(--warn); border-radius: 8px; padding: 8px 12px; margin: 0 0 16px; font-size: 13px; }
   .chart { padding: 4px 16px 12px; }
   .chart svg { width: 100%; height: 150px; display: block; }
   footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
@@ -223,9 +224,13 @@ const pickLabel = (g, name) =>
 const WARN_TEXT = { drift: '⚠ price drifting out', absences: '⚠ key absences', sharp: '⚠ Pinnacle sides with bet365' };
 
 let sportFilter = null, query = '', scope = 'all';
-const hotCutoff = Date.parse(DATA.generatedAt) / 1000 + (DATA.config.hotWindowHours || 3) * 3600;
+// All time filtering is relative to when the page is VIEWED, not when it was
+// generated — games that have kicked off since the last scan are hidden.
+const NOW = () => Date.now() / 1000;
+const hotCutoff = () => NOW() + (DATA.config.hotWindowHours || 3) * 3600;
+const notStarted = (g) => g.startTimestamp > NOW() - 300;
 function startsIn(ts) {
-  const mins = Math.max(0, Math.round((ts - Date.parse(DATA.generatedAt) / 1000) / 60));
+  const mins = Math.max(0, Math.round((ts - NOW()) / 60));
   const h = Math.floor(mins / 60), m = mins % 60;
   return h ? 'in ' + h + 'h ' + (m ? m + 'm' : '') : 'in ' + m + 'm';
 }
@@ -260,7 +265,8 @@ function voteBar(g) {
 }
 function visibleGames() {
   return DATA.games.filter(g => {
-    if (scope === 'hot' && g.startTimestamp > hotCutoff) return false;
+    if (!notStarted(g)) return false;
+    if (scope === 'hot' && g.startTimestamp > hotCutoff()) return false;
     if (sportFilter && g.sport !== sportFilter) return false;
     if (query) {
       const hay = (g.home + ' ' + g.away + ' ' + g.tournament + ' ' + g.country).toLowerCase();
@@ -388,16 +394,27 @@ function renderCalibration() {
 function render() { renderFlags(); renderAll(); }
 
 (function init() {
-  const flaggedCount = DATA.games.reduce((s, g) => s + g.outcomes.filter(o => o.flagged).length, 0);
-  const hotFlagged = DATA.games.filter(g => g.startTimestamp <= hotCutoff)
+  const upcoming = DATA.games.filter(notStarted);
+  const flaggedCount = upcoming.reduce((s, g) => s + g.outcomes.filter(o => o.flagged).length, 0);
+  const hotFlagged = upcoming.filter(g => g.startTimestamp <= hotCutoff())
     .reduce((s, g) => s + g.outcomes.filter(o => o.flagged).length, 0);
+  const started = DATA.games.length - upcoming.length;
+  const ageHours = (Date.now() - Date.parse(DATA.generatedAt)) / 3.6e6;
+  if (ageHours > 2.5) {
+    const stale = document.createElement('div');
+    stale.className = 'staleWarn';
+    stale.textContent = '⚠ Last scan was ' + ageHours.toFixed(1) + ' h ago (laptop asleep?). '
+      + (started ? started + ' game(s) that have since kicked off are hidden. ' : '')
+      + 'A fresh scan starts automatically within minutes of the laptop waking.';
+    document.getElementById('sub').after(stale);
+  }
   const r = DATA.record;
   document.getElementById('sub').textContent =
     'Updated ' + new Date(DATA.generatedAt).toLocaleString() + ' · scanning ' + DATA.windowHours + ' h ahead · odds: bet365 via Sofascore · auto-refreshes every 2 h';
   const tiles = [
     [String(hotFlagged), 'flagged next ' + (DATA.config.hotWindowHours || 3) + ' h', ''],
     [String(flaggedCount), 'flagged in next ' + DATA.windowHours + ' h', ''],
-    [String(DATA.games.length), 'games in window', ''],
+    [String(upcoming.length), 'games in window', ''],
     [r.settled ? (r.units >= 0 ? '+' : '') + r.units + 'u' : '—', 'profit (' + r.settled + ' settled picks)', r.settled ? (r.units >= 0 ? 'pos' : 'neg') : ''],
     [r.hitRate != null ? fmtPct(r.hitRate) : '—', 'hit rate', ''],
     [r.avgClv != null ? (r.avgClv >= 0 ? '+' : '') + fmtPct(r.avgClv) : '—', 'avg closing line value', r.avgClv != null ? (r.avgClv >= 0 ? 'pos' : 'neg') : ''],
