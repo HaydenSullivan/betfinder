@@ -1,8 +1,11 @@
 name: scan
 
+# NOTE: the cron schedule is disabled — Sofascore's WAF 403-blocks GitHub's
+# runner IP ranges (verified 2026-07-20 on all three API hosts), so scheduled
+# cloud scans can never succeed. Scanning runs on the laptop via Task Scheduler
+# (scripts/runScan.ps1), which pushes ledger + dashboard here; Pages serves it.
+# workflow_dispatch is kept for re-testing if Sofascore's blocking ever changes.
 on:
-  schedule:
-    - cron: '17 */2 * * *' # every 2 hours (UTC); offset from the top of the hour
   workflow_dispatch:
 
 permissions:
