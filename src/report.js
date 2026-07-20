@@ -173,7 +173,7 @@ function buildReport(data) {
     <span><span class="sw" style="background:var(--home)"></span>Home / player 1</span>
     <span><span class="sw" style="background:var(--draw)"></span>Draw</span>
     <span><span class="sw" style="background:var(--away)"></span>Away / player 2</span>
-    <span class="dim">Form reads newest → oldest</span>
+    <span class="dim">Form reads newest → oldest · ★ = quality-adjusted 0–100 (win margins + opponent rank)</span>
   </div>
   <section>
     <h2>Flagged value bets — this scan</h2>
@@ -239,6 +239,13 @@ function warnBadges(o) {
   return (o.warnings || []).map(w => '<span class="wbadge">' + (WARN_TEXT[w] || w) + '</span>').join('');
 }
 function formCell(g) {
+  if (g.richForm && g.richForm.home && g.richForm.away) {
+    const pct = (s) => Math.round(s.score * 100);
+    const tip = (s) => (s.ranking ? '#' + s.ranking + ': ' : '')
+      + s.detail.map(d => d.result + (d.oppRank ? ' v #' + d.oppRank : '') + ' (' + Math.round(d.quality * 100) + ')').join(', ');
+    return '<span class="form" title="Quality-adjusted form 0–100 (margins + opponent strength), newest first. Home ' + esc(tip(g.richForm.home)) + ' — Away ' + esc(tip(g.richForm.away)) + '">★ '
+      + pct(g.richForm.home) + ' v ' + pct(g.richForm.away) + '</span>';
+  }
   if (!g.form) return '<span class="dim">—</span>';
   const f = (side) => (side.form || []).slice(0, 5).join('') || '—';
   return '<span class="form" title="Newest first">' + esc(f(g.form.home)) + ' v ' + esc(f(g.form.away)) + '</span>';

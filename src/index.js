@@ -14,6 +14,7 @@ const ledger = require('./ledger');
 const { settle } = require('./settle');
 const { calibrate } = require('./calibrate');
 const { sharpCheck } = require('./sharpCheck');
+const { TeamCache, fetchRichForm } = require('./richForm');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -83,7 +84,7 @@ async function collectGames(client, config, windowHours) {
   // fanbase debiasing needs — treat them as uncached so they refetch once.
   const uncachedIds = allIds.filter((id) => {
     const cached = cache.get(id);
-    return !cached || !('homeFollowers' in cached);
+    return !cached || !('homeFollowers' in cached) || !('homeTeamId' in cached);
   });
   if (uncachedIds.length) {
     const paths = uncachedIds.map((id) => `/api/v1/event/${id}`);
@@ -150,6 +151,7 @@ function toLedgerEntries(analyzed, scanAt) {
         formEdge: o.formEdge === null ? null : Number(o.formEdge.toFixed(3)),
         estProb: Number(o.estProb.toFixed(4)),
         ev: Number(o.ev.toFixed(4)),
+        formSource: game.formSource || null,
         penalty: o.penalty,
         warnings: o.warnings,
         flagged: o.flagged,
@@ -168,11 +170,12 @@ async function main() {
   if (args.sports) config.sports = args.sports;
   const scanAt = new Date().toISOString();
 
-  let games;
+  let analyzed;
   let calibration = null;
   if (args.mock) {
-    games = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'games.json'), 'utf8'));
+    const games = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'games.json'), 'utf8'));
     log(`mock mode: ${games.length} fixture games`);
+    analyzed = analyzeAll(games, config, calibration);
   } else {
     const client = new BrowserClient({
       chromePath: config.chromePath || undefined,
@@ -185,13 +188,32 @@ async function main() {
     try {
       await settle(client, log);
       calibration = calibrate(ledger.loadAllEntries(), config, log);
-      games = await collectGames(client, config, windowHours);
+      const games = await collectGames(client, config, windowHours);
+      analyzed = analyzeAll(games, config, calibration);
+
+      // Second pass: quality-adjusted form (margins + opponent strength) for
+      // games near or over the flag threshold, then re-analyze those.
+      if (config.deepForm) {
+        const floor = config.evThreshold - config.deepFormMargin;
+        const candidates = analyzed.filter((g) =>
+          g.outcomes.some((o) => o.voteShare !== null && o.ev >= floor)
+        );
+        if (candidates.length) {
+          const teamCache = new TeamCache(path.join(ROOT, '.cache'));
+          let enriched = 0;
+          for (const game of candidates) {
+            if (await fetchRichForm(client, teamCache, game, config.deepFormMatches)) enriched++;
+          }
+          teamCache.save();
+          log(`  quality form: ${enriched}/${candidates.length} candidate game(s)`);
+          if (enriched) analyzed = analyzeAll(analyzed, config, calibration);
+        }
+      }
     } finally {
       await client.close();
     }
   }
 
-  const analyzed = analyzeAll(games, config, calibration);
   const flagCount = analyzed.reduce((s, g) => s + g.flags.length, 0);
 
   if (!args.mock && process.env.ODDS_API_KEY && flagCount) {

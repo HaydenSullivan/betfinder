@@ -70,8 +70,11 @@ function analyzeGame(game, config, calibration = null) {
   const w = votes ? voteWeight * (votes.total / (votes.total + config.votePrior)) : 0;
   const shares = votes ? debiasVotes(votes.counts, votes.total, game, config) : null;
 
-  const homeForm = game.form ? formScore(game.form.home.form) : null;
-  const awayForm = game.form ? formScore(game.form.away.form) : null;
+  // Quality-adjusted form (margins + opponent strength) when computed;
+  // otherwise the plain last-5 W/D/L letters.
+  const rich = game.richForm && game.richForm.home && game.richForm.away;
+  const homeForm = rich ? game.richForm.home.score : game.form ? formScore(game.form.home.form) : null;
+  const awayForm = rich ? game.richForm.away.score : game.form ? formScore(game.form.away.form) : null;
   const formAvailable = homeForm !== null && awayForm !== null;
 
   const analyzed = priced.map((outcome) => {
@@ -135,6 +138,7 @@ function analyzeGame(game, config, calibration = null) {
     voteWeightUsed: voteWeight,
     homeFormScore: homeForm,
     awayFormScore: awayForm,
+    formSource: formAvailable ? (rich ? 'rich' : 'letters') : null,
     totalVotes: votes ? votes.total : 0,
     bestEv: Math.max(...analyzed.map((o) => (o.voteShare === null ? -1 : o.ev))),
     flags: analyzed.filter((o) => o.flagged),

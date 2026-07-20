@@ -1,6 +1,10 @@
 {
-  "updatedAt": "2026-07-20T10:28:49.289Z",
-  "samples": 54,
-  "global": null,
+  "updatedAt": "2026-07-20T10:50:40.512Z",
+  "samples": 89,
+  "global": {
+    "voteWeight": 0,
+    "logLoss": 0.53007,
+    "samples": 89
+  },
   "sports": {}
 }

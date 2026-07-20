@@ -99,6 +99,8 @@ function parseEvent(event) {
     customId: event.customId,
     home: event.homeTeam && event.homeTeam.name,
     away: event.awayTeam && event.awayTeam.name,
+    homeTeamId: (event.homeTeam && event.homeTeam.id) || null,
+    awayTeamId: (event.awayTeam && event.awayTeam.id) || null,
     homeFollowers: (event.homeTeam && event.homeTeam.userCount) || null,
     awayFollowers: (event.awayTeam && event.awayTeam.userCount) || null,
     startTimestamp: event.startTimestamp,
