@@ -1,16 +1,16 @@
 {
-  "updatedAt": "2026-07-20T18:04:17.745Z",
-  "samples": 441,
+  "updatedAt": "2026-07-20T19:00:11.464Z",
+  "samples": 472,
   "global": {
     "voteWeight": 0.6,
-    "logLoss": 0.52648,
-    "samples": 441
+    "logLoss": 0.53919,
+    "samples": 472
   },
   "sports": {
     "tennis": {
       "voteWeight": 0.6,
-      "logLoss": 0.50613,
-      "samples": 326
+      "logLoss": 0.51312,
+      "samples": 342
     }
   }
 }
