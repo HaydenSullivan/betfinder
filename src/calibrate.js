@@ -15,19 +15,32 @@ function loadCalibration() {
   }
 }
 
+// Fitted live weights win; otherwise backtest-seeded per-sport priors; otherwise default.
 function voteWeightFor(sport, calibration, config) {
   if (calibration) {
     if (calibration.sports && calibration.sports[sport]) return calibration.sports[sport].voteWeight;
     if (calibration.global) return calibration.global.voteWeight;
   }
+  if (config.voteWeightPriors && config.voteWeightPriors[sport] !== undefined) {
+    return config.voteWeightPriors[sport];
+  }
   return config.voteWeight;
 }
 
+// Effective crowd weight for a game: shrinks toward 0 for tiny vote counts
+// (statistical noise) AND for huge ones — backtesting showed small-vote crowds
+// (informed locals) beat big-vote crowds (casual fans of famous teams).
+function effectiveVoteWeight(w, totalVotes, config) {
+  const noise = totalVotes / (totalVotes + config.votePrior);
+  const fame = config.voteCeiling / (config.voteCeiling + totalVotes);
+  return w * noise * fame;
+}
+
 // Mean binary log loss of the blended probability at candidate weight w.
-function logLossAt(w, samples, votePrior) {
+function logLossAt(w, samples, config) {
   let loss = 0;
   for (const s of samples) {
-    const wEff = w * (s.totalVotes / (s.totalVotes + votePrior));
+    const wEff = effectiveVoteWeight(w, s.totalVotes, config);
     let p = wEff * s.voteShare + (1 - wEff) * s.marketProb;
     p = Math.min(0.999, Math.max(0.001, p));
     loss -= s.won ? Math.log(p) : Math.log(1 - p);
@@ -35,10 +48,10 @@ function logLossAt(w, samples, votePrior) {
   return loss / samples.length;
 }
 
-function fitWeight(samples, votePrior) {
+function fitWeight(samples, config) {
   let best = { voteWeight: 0, logLoss: Infinity };
   for (let w = 0; w <= 0.6001; w += 0.025) {
-    const loss = logLossAt(w, samples, votePrior);
+    const loss = logLossAt(w, samples, config);
     if (loss < best.logLoss) best = { voteWeight: Number(w.toFixed(3)), logLoss: Number(loss.toFixed(5)) };
   }
   return best;
@@ -61,7 +74,7 @@ function calibrate(entries, config, log = () => {}) {
 
   const calibration = { updatedAt: new Date().toISOString(), samples: usable.length, global: null, sports: {} };
   if (usable.length >= config.calibrationMinSamplesGlobal) {
-    calibration.global = { ...fitWeight(usable, config.votePrior), samples: usable.length };
+    calibration.global = { ...fitWeight(usable, config), samples: usable.length };
     const bySport = new Map();
     for (const s of usable) {
       if (!bySport.has(s.sport)) bySport.set(s.sport, []);
@@ -69,7 +82,7 @@ function calibrate(entries, config, log = () => {}) {
     }
     for (const [sport, samples] of bySport) {
       if (samples.length >= config.calibrationMinSamplesSport) {
-        calibration.sports[sport] = { ...fitWeight(samples, config.votePrior), samples: samples.length };
+        calibration.sports[sport] = { ...fitWeight(samples, config), samples: samples.length };
       }
     }
     log(
@@ -85,4 +98,4 @@ function calibrate(entries, config, log = () => {}) {
   return calibration;
 }
 
-module.exports = { calibrate, loadCalibration, voteWeightFor, fitWeight, logLossAt, CALIBRATION_FILE };
+module.exports = { calibrate, loadCalibration, voteWeightFor, effectiveVoteWeight, fitWeight, logLossAt, CALIBRATION_FILE };

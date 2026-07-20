@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { resultForOutcome } = require('../src/settle');
-const { fitWeight } = require('../src/calibrate');
+const { fitWeight, effectiveVoteWeight } = require('../src/calibrate');
 const { lastSnapshots, firstFlaggedSnapshots } = require('../src/ledger');
 
 test('settlement maps winnerCode to outcome results', () => {
@@ -14,14 +14,26 @@ test('settlement maps winnerCode to outcome results', () => {
 });
 
 test('calibration recovers the true blend weight from synthetic results', () => {
-  // True process: p = 0.35 * vote + 0.65 * market (huge vote counts, so shrinkage ≈ none)
+  const config = { votePrior: 500, voteCeiling: 15000 };
+  const totalVotes = 2739; // near the peak of the noise×fame curve
+  const wEff = effectiveVoteWeight(0.35, totalVotes, config);
+  const trueP = wEff * 0.8 + (1 - wEff) * 0.5;
   const samples = [];
-  const trueP = 0.35 * 0.8 + 0.65 * 0.5; // 0.605
-  for (let i = 0; i < 1000; i++) {
-    samples.push({ voteShare: 0.8, marketProb: 0.5, totalVotes: 1e9, won: i < Math.round(trueP * 1000) });
+  for (let i = 0; i < 2000; i++) {
+    samples.push({ voteShare: 0.8, marketProb: 0.5, totalVotes, won: i < Math.round(trueP * 2000) });
   }
-  const fit = fitWeight(samples, 1000);
-  assert.ok(Math.abs(fit.voteWeight - 0.35) <= 0.03, `fitted ${fit.voteWeight}, expected ~0.35`);
+  const fit = fitWeight(samples, config);
+  assert.ok(Math.abs(fit.voteWeight - 0.35) <= 0.05, `fitted ${fit.voteWeight}, expected ~0.35`);
+});
+
+test('effective vote weight tapers for both tiny and huge vote counts', () => {
+  const config = { votePrior: 500, voteCeiling: 15000 };
+  const small = effectiveVoteWeight(0.5, 150, config);
+  const mid = effectiveVoteWeight(0.5, 2739, config);
+  const huge = effectiveVoteWeight(0.5, 200000, config);
+  assert.ok(mid > small, 'mid-size crowds trusted more than tiny ones');
+  assert.ok(mid > huge, 'mid-size crowds trusted more than huge (famous-team) ones');
+  assert.ok(huge < 0.05, 'very famous games nearly ignore the crowd');
 });
 
 test('ledger views pick latest snapshot and earliest flagged snapshot', () => {

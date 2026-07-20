@@ -11,7 +11,7 @@
 //   form         — recent-form differential nudges estProb toward the in-form side.
 //   EV_i         = estProb_i · odds_i − 1, minus penalties for market drift
 //                  against the pick and for missing players on the pick side.
-const { voteWeightFor } = require('./calibrate');
+const { voteWeightFor, effectiveVoteWeight } = require('./calibrate');
 
 // Find k such that sum((1/odds_i)^k) = 1 (bisection), probabilities = (1/odds)^k.
 function powerDeVig(outcomes) {
@@ -67,7 +67,7 @@ function analyzeGame(game, config, calibration = null) {
   const priced = powerDeVig(game.market.outcomes);
   const votes = game.votes; // { counts, total } or null
   const voteWeight = voteWeightFor(game.sport, calibration, config);
-  const w = votes ? voteWeight * (votes.total / (votes.total + config.votePrior)) : 0;
+  const w = votes ? effectiveVoteWeight(voteWeight, votes.total, config) : 0;
   const shares = votes ? debiasVotes(votes.counts, votes.total, game, config) : null;
 
   // Quality-adjusted form (margins + opponent strength) when computed;
