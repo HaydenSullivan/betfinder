@@ -213,7 +213,13 @@ const kickoff = (ts) => new Date(ts * 1000).toLocaleString([], { day: 'numeric',
 const outcomeLabel = (g, name) => name === '1' ? g.home : name === '2' ? g.away : 'Draw';
 const WARN_TEXT = { drift: '⚠ price drifting out', absences: '⚠ key absences', sharp: '⚠ Pinnacle sides with bet365' };
 
-let sportFilter = null, query = '';
+let sportFilter = null, query = '', scope = 'all';
+const hotCutoff = Date.parse(DATA.generatedAt) / 1000 + (DATA.config.hotWindowHours || 3) * 3600;
+function startsIn(ts) {
+  const mins = Math.max(0, Math.round((ts - Date.parse(DATA.generatedAt) / 1000) / 60));
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h ? 'in ' + h + 'h ' + (m ? m + 'm' : '') : 'in ' + m + 'm';
+}
 
 function driftCell(o) {
   if (o.openingOdds == null || o.openingOdds === o.odds) return '';
@@ -238,6 +244,7 @@ function voteBar(g) {
 }
 function visibleGames() {
   return DATA.games.filter(g => {
+    if (scope === 'hot' && g.startTimestamp > hotCutoff) return false;
     if (sportFilter && g.sport !== sportFilter) return false;
     if (query) {
       const hay = (g.home + ' ' + g.away + ' ' + g.tournament + ' ' + g.country).toLowerCase();
@@ -261,7 +268,7 @@ function renderFlags() {
   table.innerHTML = '<tr><th>Kickoff</th><th>Match</th><th>Pick</th><th class="num">bet365 odds</th>'
     + '<th class="num">Market %</th><th class="num">Crowd %</th><th>Form (H v A)</th><th class="num">Model %</th><th class="num">EV</th></tr>'
     + rows.map(({ g, o }) =>
-      '<tr><td>' + kickoff(g.startTimestamp) + '</td>' + matchCell(g)
+      '<tr><td>' + kickoff(g.startTimestamp) + '<div class="dim">' + startsIn(g.startTimestamp) + '</div></td>' + matchCell(g)
       + '<td class="pick">' + esc(outcomeLabel(g, o.name)) + warnBadges(o)
       + (o.pinnacle ? '<div class="meta">Pinnacle ' + fmtPct(o.pinnacle.prob) + ' @ ' + fmtOdds(o.pinnacle.odds) + '</div>' : '') + '</td>'
       + '<td class="num">' + fmtOdds(o.odds) + ' ' + driftCell(o) + '</td>'
@@ -354,11 +361,14 @@ function render() { renderFlags(); renderAll(); }
 
 (function init() {
   const flaggedCount = DATA.games.reduce((s, g) => s + g.outcomes.filter(o => o.flagged).length, 0);
+  const hotFlagged = DATA.games.filter(g => g.startTimestamp <= hotCutoff)
+    .reduce((s, g) => s + g.outcomes.filter(o => o.flagged).length, 0);
   const r = DATA.record;
   document.getElementById('sub').textContent =
-    'Updated ' + new Date(DATA.generatedAt).toLocaleString() + ' · window ' + DATA.windowHours + ' h · odds: bet365 via Sofascore · auto-refreshes every 2 h';
+    'Updated ' + new Date(DATA.generatedAt).toLocaleString() + ' · scanning ' + DATA.windowHours + ' h ahead · odds: bet365 via Sofascore · auto-refreshes every 2 h';
   const tiles = [
-    [String(flaggedCount), 'flagged now', ''],
+    [String(hotFlagged), 'flagged next ' + (DATA.config.hotWindowHours || 3) + ' h', ''],
+    [String(flaggedCount), 'flagged in next ' + DATA.windowHours + ' h', ''],
     [String(DATA.games.length), 'games in window', ''],
     [r.settled ? (r.units >= 0 ? '+' : '') + r.units + 'u' : '—', 'profit (' + r.settled + ' settled picks)', r.settled ? (r.units >= 0 ? 'pos' : 'neg') : ''],
     [r.hitRate != null ? fmtPct(r.hitRate) : '—', 'hit rate', ''],
@@ -369,15 +379,20 @@ function render() { renderFlags(); renderAll(); }
 
   const sports = [...new Set(DATA.games.map(g => g.sport))];
   const controls = document.getElementById('controls');
-  controls.innerHTML = '<button class="chip on" data-sport="">All sports</button>'
+  controls.innerHTML = '<button class="chip on" data-scope="all">Today (' + DATA.windowHours + ' h)</button>'
+    + '<button class="chip" data-scope="hot">Next ' + (DATA.config.hotWindowHours || 3) + ' h</button>'
+    + '<span style="width:10px"></span>'
+    + '<button class="chip on" data-sport="">All sports</button>'
     + sports.map(s => '<button class="chip" data-sport="' + esc(s) + '">' + esc(sportLabel(s)) + '</button>').join('')
     + '<input type="search" id="q" placeholder="Search team or league…">';
   controls.addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
     if (!chip) return;
-    controls.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+    const group = chip.dataset.scope !== undefined ? '[data-scope]' : '[data-sport]';
+    controls.querySelectorAll('.chip' + group).forEach(c => c.classList.remove('on'));
     chip.classList.add('on');
-    sportFilter = chip.dataset.sport || null;
+    if (chip.dataset.scope !== undefined) scope = chip.dataset.scope;
+    else sportFilter = chip.dataset.sport || null;
     render();
   });
   document.getElementById('q').addEventListener('input', (e) => {

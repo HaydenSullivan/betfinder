@@ -199,7 +199,12 @@ async function main() {
   const reportData = prepareReportData({
     generatedAt: scanAt,
     windowHours,
-    config: { minVotes: config.minVotes, evThreshold: config.evThreshold, voteWeight: config.voteWeight },
+    config: {
+      minVotes: config.minVotes,
+      evThreshold: config.evThreshold,
+      voteWeight: config.voteWeight,
+      hotWindowHours: config.hotWindowHours,
+    },
     games: analyzed.map(({ flags, market, votes, lineups, ...g }) => g),
     calibration,
     ledgerEntries: args.mock ? [] : ledger.loadAllEntries(),

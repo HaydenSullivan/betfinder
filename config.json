@@ -1,5 +1,6 @@
 {
-  "windowHours": 3,
+  "windowHours": 24,
+  "hotWindowHours": 3,
   "sports": ["football", "tennis", "basketball", "baseball", "volleyball", "handball", "esports", "rugby", "aussie-rules", "ice-hockey", "american-football"],
   "oddsProviderId": 1,
   "voteWeight": 0.35,
