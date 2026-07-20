@@ -179,7 +179,7 @@ function buildReport(data) {
   </section>
   <section>
     <h2>All scanned games</h2>
-    <p class="note">Every game in the window with bet365-fed odds, sorted by best expected value.</p>
+    <p class="note">Every game in the window with bet365-fed odds, nearest kickoff first.</p>
     <div class="scroller"><table id="all"></table></div>
     <div class="empty" id="allEmpty" hidden>No games with odds in the current window.</div>
   </section>
@@ -261,7 +261,7 @@ function matchCell(g) {
 function renderFlags() {
   const rows = [];
   for (const g of visibleGames()) for (const o of g.outcomes) if (o.flagged) rows.push({ g, o });
-  rows.sort((x, y) => y.o.ev - x.o.ev);
+  rows.sort((x, y) => x.g.startTimestamp - y.g.startTimestamp || y.o.ev - x.o.ev);
   const table = document.getElementById('flags');
   document.getElementById('flagsEmpty').hidden = rows.length > 0;
   table.hidden = rows.length === 0;
@@ -281,7 +281,7 @@ function renderFlags() {
 }
 
 function renderAll() {
-  const games = visibleGames();
+  const games = visibleGames().sort((a, b) => a.startTimestamp - b.startTimestamp || b.bestEv - a.bestEv);
   const table = document.getElementById('all');
   document.getElementById('allEmpty').hidden = games.length > 0;
   table.hidden = games.length === 0;
