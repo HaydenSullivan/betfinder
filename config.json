@@ -1,0 +1,23 @@
+{
+  "windowHours": 3,
+  "sports": ["football", "tennis", "basketball", "baseball", "volleyball", "handball", "esports", "rugby", "aussie-rules", "ice-hockey", "american-football"],
+  "oddsProviderId": 1,
+  "voteWeight": 0.35,
+  "votePrior": 1000,
+  "minVotes": 300,
+  "evThreshold": 0.05,
+  "maxOdds": 15,
+  "flagDraws": false,
+  "fanbaseDebias": true,
+  "fanShareClip": 0.2,
+  "formWeight": 0.08,
+  "driftThreshold": 0.15,
+  "driftPenalty": 0.03,
+  "lineupMissingDiff": 2,
+  "lineupPenalty": 0.03,
+  "calibrationMinSamplesGlobal": 80,
+  "calibrationMinSamplesSport": 200,
+  "concurrency": 6,
+  "requestDelayMs": 60,
+  "chromePath": ""
+}

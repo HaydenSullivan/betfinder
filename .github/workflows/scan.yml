@@ -1,0 +1,52 @@
+name: scan
+
+on:
+  schedule:
+    - cron: '17 */2 * * *' # every 2 hours (UTC); offset from the top of the hour
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Cache immutable event details between runs within the same day
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: events-${{ github.run_id }}
+          restore-keys: events-
+
+      - name: Run pipeline (settle -> calibrate -> scan -> report)
+        run: node src/index.js --ci
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+
+      - name: Commit ledger and dashboard
+        run: |
+          git config user.name "betfinder-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data docs
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "scan: $(date -u +'%Y-%m-%d %H:%M') UTC"
+            git pull --rebase origin main
+            git push
+          fi

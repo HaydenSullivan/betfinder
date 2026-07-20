@@ -1,0 +1,88 @@
+// Fits the vote-blend weight from settled predictions by minimizing log loss.
+// Output (data/calibration.json) overrides config.voteWeight, per sport where
+// there is enough data, globally otherwise.
+const fs = require('fs');
+const path = require('path');
+const ledger = require('./ledger');
+
+const CALIBRATION_FILE = path.join(ledger.DATA_DIR, 'calibration.json');
+
+function loadCalibration() {
+  try {
+    return JSON.parse(fs.readFileSync(CALIBRATION_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function voteWeightFor(sport, calibration, config) {
+  if (calibration) {
+    if (calibration.sports && calibration.sports[sport]) return calibration.sports[sport].voteWeight;
+    if (calibration.global) return calibration.global.voteWeight;
+  }
+  return config.voteWeight;
+}
+
+// Mean binary log loss of the blended probability at candidate weight w.
+function logLossAt(w, samples, votePrior) {
+  let loss = 0;
+  for (const s of samples) {
+    const wEff = w * (s.totalVotes / (s.totalVotes + votePrior));
+    let p = wEff * s.voteShare + (1 - wEff) * s.marketProb;
+    p = Math.min(0.999, Math.max(0.001, p));
+    loss -= s.won ? Math.log(p) : Math.log(1 - p);
+  }
+  return loss / samples.length;
+}
+
+function fitWeight(samples, votePrior) {
+  let best = { voteWeight: 0, logLoss: Infinity };
+  for (let w = 0; w <= 0.6001; w += 0.025) {
+    const loss = logLossAt(w, samples, votePrior);
+    if (loss < best.logLoss) best = { voteWeight: Number(w.toFixed(3)), logLoss: Number(loss.toFixed(5)) };
+  }
+  return best;
+}
+
+// entries: full ledger. Uses the last snapshot per outcome, settled won/lost only,
+// with vote data present.
+function calibrate(entries, config, log = () => {}) {
+  const usable = ledger
+    .lastSnapshots(entries)
+    .filter((e) => e.settled && (e.result === 'won' || e.result === 'lost'))
+    .filter((e) => e.voteShare !== null && e.voteShare !== undefined && e.totalVotes > 0)
+    .map((e) => ({
+      sport: e.sport,
+      voteShare: e.voteShare,
+      marketProb: e.marketProb,
+      totalVotes: e.totalVotes,
+      won: e.result === 'won',
+    }));
+
+  const calibration = { updatedAt: new Date().toISOString(), samples: usable.length, global: null, sports: {} };
+  if (usable.length >= config.calibrationMinSamplesGlobal) {
+    calibration.global = { ...fitWeight(usable, config.votePrior), samples: usable.length };
+    const bySport = new Map();
+    for (const s of usable) {
+      if (!bySport.has(s.sport)) bySport.set(s.sport, []);
+      bySport.get(s.sport).push(s);
+    }
+    for (const [sport, samples] of bySport) {
+      if (samples.length >= config.calibrationMinSamplesSport) {
+        calibration.sports[sport] = { ...fitWeight(samples, config.votePrior), samples: samples.length };
+      }
+    }
+    log(
+      `  calibration: global voteWeight ${calibration.global.voteWeight} from ${usable.length} samples` +
+        (Object.keys(calibration.sports).length ? `, per-sport: ${Object.keys(calibration.sports).join(', ')}` : '')
+    );
+  } else {
+    log(`  calibration: ${usable.length}/${config.calibrationMinSamplesGlobal} settled samples — using config default`);
+  }
+
+  fs.mkdirSync(path.dirname(CALIBRATION_FILE), { recursive: true });
+  fs.writeFileSync(CALIBRATION_FILE, JSON.stringify(calibration, null, 2));
+  return calibration;
+}
+
+module.exports = { calibrate, loadCalibration, voteWeightFor, fitWeight, logLossAt, CALIBRATION_FILE };
