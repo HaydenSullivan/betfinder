@@ -286,7 +286,7 @@ function buildReport(data) {
     <span class="dim">Form reads newest → oldest · ★ = quality-adjusted 0–100 (win margins + opponent rank)</span>
   </div>
   <div id="blocksWrap" hidden>
-    <h2 class="blocksH2">Best pick per 3-hour window</h2>
+    <h2 class="blocksH2" id="blocksTitle">Best pick per 3-hour window</h2>
     <p class="note blocksNote">The best available pick in each upcoming 3-hour block across the next 24 h. Green = a promoted flag;
       otherwise the top research candidate, preferring drift-crowd (the one signal with positive out-of-sample evidence). Respects the sport filter &amp; search.</p>
     <div class="blocks" id="blocks"></div>
@@ -432,11 +432,17 @@ function visibleGames() { return filteredGames(true); }
 // sport filter + search. Populates blockBestKeys so renderFlags can mark them.
 let blockBestKeys = new Set();
 function renderBlocks() {
-  const games = filteredGames(false);
+  // The Next-3h / Today toggle controls this strip too: "Next 3h" shows only
+  // the immediate window, "Today" breaks the full 24 h into 3-hour slices.
+  const hotOnly = scope === 'hot';
+  const games = filteredGames(hotOnly);
   const now = NOW();
   const blockH = DATA.config.hotWindowHours || 3;
   const blockSec = blockH * 3600;
-  const spanSec = DATA.windowHours * 3600;
+  const spanSec = hotOnly ? blockSec : DATA.windowHours * 3600;
+  document.getElementById('blocksTitle').textContent = hotOnly
+    ? 'Best picks — next ' + blockH + ' hours'
+    : 'Best pick per ' + blockH + '-hour window (next ' + DATA.windowHours + ' h)';
   const clock = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   blockBestKeys = new Set();
   const cards = [];
