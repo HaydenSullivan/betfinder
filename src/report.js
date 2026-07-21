@@ -1,5 +1,6 @@
 // Renders the scan + track record as a self-contained HTML dashboard.
 const ledger = require('./ledger');
+const { SIGNALS } = require('./promotions');
 
 const SPORT_LABELS = {
   football: 'Soccer',
@@ -92,12 +93,43 @@ function prepareReportData({ generatedAt, windowHours, config, games, calibratio
       clv: clvs.length ? clvs.reduce((s, e) => s + e.clv, 0) / clvs.length : null,
     };
   };
-  const shadows = {
-    driftCrowd: scoreShadow(settledLast.filter((e) => e.shadowDriftCrowd)),
-    consensus: scoreShadow(
-      settledLast.filter((e) => e.consensusEv != null && e.consensusEv >= 0.04 && e.outcome !== 'X' && e.odds <= 6)
-    ),
-  };
+  const shadows = {};
+  for (const [key, sig] of Object.entries(SIGNALS)) {
+    shadows[key] = { label: sig.label, ...scoreShadow(settledLast.filter(sig.settledMatch)) };
+  }
+
+  // Performance attribution: the settled record sliced by what generated each
+  // pick (core model vs promoted signals) and by sport — so a blended total
+  // can never hide which engine is earning and which is bleeding.
+  const attribution = (() => {
+    const groups = new Map();
+    const add = (key, e) => {
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(e);
+    };
+    for (const e of picks) {
+      add('src:' + (e.signals && e.signals.length ? e.signals[0] : 'model'), e);
+      add('sport:' + e.sport, e);
+    }
+    const rows = [];
+    for (const [key, list] of groups) {
+      const decided = list.filter((e) => e.result !== 'void');
+      if (!decided.length) continue;
+      const wins = decided.filter((e) => e.result === 'won').length;
+      const units = decided.reduce((s, e) => s + (e.result === 'won' ? e.odds - 1 : -1), 0);
+      const clvs = list.filter((e) => e.clv != null);
+      rows.push({
+        key,
+        n: decided.length,
+        hit: wins / decided.length,
+        units: Number(units.toFixed(2)),
+        roi: units / decided.length,
+        clv: clvs.length ? clvs.reduce((s, e) => s + e.clv, 0) / clvs.length : null,
+      });
+    }
+    rows.sort((a, b) => (a.key < b.key ? -1 : 1));
+    return rows;
+  })();
 
   return {
     generatedAt,
@@ -108,6 +140,7 @@ function prepareReportData({ generatedAt, windowHours, config, games, calibratio
     record,
     buckets,
     shadows,
+    attribution,
     promotions: promotions || null,
     calibration: calibration || null,
     sportLabels: SPORT_LABELS,
@@ -171,6 +204,7 @@ function buildReport(data) {
   .badge { display: inline-block; border: 1px solid var(--good); color: var(--good-text); border-radius: 6px; padding: 1px 8px; font-weight: 650; font-variant-numeric: tabular-nums; }
   .wbadge { display: inline-block; border: 1px solid var(--warn); color: var(--warn); border-radius: 6px; padding: 0 6px; font-size: 12px; margin-left: 4px; }
   .sbadge { display: inline-block; border: 1px solid var(--home); color: var(--home); border-radius: 6px; padding: 0 6px; font-size: 12px; margin-left: 4px; }
+  #attr { min-width: 0; max-width: 640px; margin-bottom: 6px; }
   .res-won { color: var(--good-text); font-weight: 650; } .res-lost { color: var(--loss); font-weight: 650; } .res-void { color: var(--muted); }
   .drift { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .bar { display: inline-flex; width: 130px; height: 10px; border-radius: 4px; overflow: hidden; gap: 2px; vertical-align: 1px; }
@@ -269,6 +303,7 @@ function buildReport(data) {
     <h2>Track record — settled picks</h2>
     <p class="note">Flat 1-unit stake at the first flagged price. CLV = price taken vs closing price; consistently positive CLV means the signal beats the market.</p>
     <div class="chart" id="chart" hidden></div>
+    <div class="scroller"><table id="attr" hidden></table></div>
     <div class="scroller"><table id="record"></table></div>
     <div class="empty" id="recordEmpty" hidden>No settled predictions yet — the record builds automatically as flagged games finish.</div>
   </section>
@@ -303,11 +338,13 @@ const shadowTxt = (s) => !s || !s.n
   ? 'collecting…'
   : s.n + ' settled, roi ' + (s.roi >= 0 ? '+' : '') + (s.roi * 100).toFixed(1) + '%'
     + (s.clv != null ? ', clv ' + (s.clv >= 0 ? '+' : '') + (s.clv * 100).toFixed(1) + '%' : '');
-const SIGNAL_BADGE = { driftCrowd: '⚡ drift signal', consensus: '⚡ consensus signal' };
+const SIGNAL_BADGE = { driftCrowd: '⚡ drift signal', consensus: '⚡ consensus signal', bigDrift: '⚡ big-drift signal' };
 const signalLine = (key, s) => {
   const p = DATA.promotions && DATA.promotions.signals && DATA.promotions.signals[key];
   return (p && p.status === 'promoted' ? '<b>PROMOTED</b> ' : 'shadow ') + shadowTxt(s);
 };
+const ATTR_LABEL = { 'src:model': 'Core model', 'src:driftCrowd': 'Drift signal', 'src:consensus': 'Consensus signal', 'src:bigDrift': 'Big-drift signal' };
+const attrLabel = (key) => ATTR_LABEL[key] || (key.startsWith('sport:') ? sportLabel(key.slice(6)) : key);
 const signalBadges = (o) => (o.signals || []).map(k => '<span class="sbadge">' + (SIGNAL_BADGE[k] || k) + '</span>').join('');
 
 let sportFilter = null, query = '', scope = 'all';
@@ -531,6 +568,21 @@ function renderRecord() {
       + '</svg>';
   }
 
+  const attr = document.getElementById('attr');
+  attr.hidden = !DATA.attribution || !DATA.attribution.length;
+  if (!attr.hidden) {
+    const srcRows = DATA.attribution.filter((a) => a.key.startsWith('src:'));
+    const sportRows = DATA.attribution.filter((a) => a.key.startsWith('sport:'));
+    const row = (a) => '<tr><td>' + esc(attrLabel(a.key)) + '</td><td class="num">' + a.n + '</td>'
+      + '<td class="num">' + fmtPct(a.hit) + '</td>'
+      + '<td class="num">' + (a.units >= 0 ? '+' : '') + a.units.toFixed(2) + 'u</td>'
+      + '<td class="num">' + (a.roi >= 0 ? '+' : '') + fmtPct(a.roi) + '</td>'
+      + '<td class="num">' + (a.clv == null ? '—' : (a.clv >= 0 ? '+' : '') + fmtPct(a.clv)) + '</td></tr>';
+    attr.innerHTML = '<tr><th>Where the results come from</th><th class="num">Settled</th><th class="num">Hit</th>'
+      + '<th class="num">Units</th><th class="num">ROI</th><th class="num">Avg CLV</th></tr>'
+      + srcRows.map(row).join('') + sportRows.map(row).join('');
+  }
+
   const rows = [...r.picks].reverse().slice(0, 60);
   document.getElementById('record').innerHTML =
     '<tr><th>Kickoff</th><th>Match</th><th>Pick</th><th class="num">Taken</th><th class="num">Close</th>'
@@ -563,8 +615,8 @@ function renderCalibration() {
     ).join('')
     + '<tr><td colspan="4" class="dim">Vote weight in use: ' + esc(vw) + '</td></tr>'
     + '<tr><td colspan="4" class="dim">Research signals (auto-promote at 50+ settled with positive roi &amp; clv): '
-    + 'crowd-side drifted out — ' + signalLine('driftCrowd', DATA.shadows && DATA.shadows.driftCrowd)
-    + ' · bet365 outlier vs 2nd book — ' + signalLine('consensus', DATA.shadows && DATA.shadows.consensus) + '</td></tr>';
+    + Object.entries(DATA.shadows || {}).map(([k, s]) => esc(s.label) + ' — ' + signalLine(k, s)).join(' · ')
+    + '</td></tr>';
 }
 
 function render() { renderBlocks(); renderFlags(); renderAll(); }

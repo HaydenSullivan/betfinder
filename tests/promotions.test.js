@@ -47,6 +47,16 @@ test('promoted drift signal flags a matching outcome; shadow does not', () => {
   assert.ok(g2.outcomes[0].research); // research fields still stashed for the ledger
 });
 
+test('bigDrift signal fires on extreme drift regardless of crowd side', () => {
+  const { SIGNALS } = require('../src/promotions');
+  const g = { totalVotes: 50, votes: { counts: { '1': 10, X: 0, '2': 40 } }, b5: null };
+  const r = researchFields(g, { name: '1', odds: 2.5, openingOdds: 2.0 }); // +25% drift, anti-crowd side
+  assert.ok(SIGNALS.bigDrift.fires({ name: '1', odds: 2.5 }, r));
+  assert.ok(!SIGNALS.bigDrift.fires({ name: '1', odds: 2.2 }, researchFields(g, { name: '1', odds: 2.2, openingOdds: 2.0 }))); // only +10%
+  assert.ok(SIGNALS.bigDrift.settledMatch({ drift: 0.22, odds: 3.0, outcome: '2' }));
+  assert.ok(!SIGNALS.bigDrift.settledMatch({ drift: 0.22, odds: 8.0, outcome: '2' })); // odds cap
+});
+
 test('researchFields computes drift and crowd majority', () => {
   const g = { totalVotes: 500, votes: { counts: { '1': 400, X: 0, '2': 100 } }, b5: null };
   const r = researchFields(g, { name: '1', odds: 2.2, openingOdds: 2.0 });

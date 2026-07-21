@@ -47,6 +47,14 @@ const SIGNALS = {
     fires: (o, r) => r.consensusEv != null && r.consensusEv >= 0.04 && o.odds <= 6 && o.name !== 'X',
     settledMatch: (e) => e.consensusEv != null && e.consensusEv >= 0.04 && e.odds <= 6 && e.outcome !== 'X',
   },
+  // H3 (whole-panel, not split-validated — the gate adjudicates live): any side
+  // whose price blew out >=20% from open beat the close by ~+19% ROI.
+  bigDrift: {
+    label: 'extreme drift ≥20%',
+    badge: '⚡ big-drift signal',
+    fires: (o, r) => r.drift != null && r.drift >= 0.2 && o.odds <= 6 && o.name !== 'X',
+    settledMatch: (e) => e.drift != null && e.drift >= 0.2 && e.odds <= 6 && e.outcome !== 'X',
+  },
 };
 
 function scoreSignal(entries, match) {

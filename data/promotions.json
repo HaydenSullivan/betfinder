@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-21T10:32:01.751Z",
+  "updatedAt": "2026-07-21T10:40:44.579Z",
   "rules": {
     "minSettled": 50,
     "promoteRoi": 0.02,
@@ -11,9 +11,9 @@
     "driftCrowd": {
       "status": "shadow",
       "label": "crowd-side drifted out",
-      "n": 1,
-      "roi": 0.4444,
-      "clv": 0.0317,
+      "n": 0,
+      "roi": null,
+      "clv": null,
       "since": "2026-07-21T10:32:01.751Z"
     },
     "consensus": {
@@ -23,6 +23,14 @@
       "roi": null,
       "clv": null,
       "since": "2026-07-21T10:32:01.751Z"
+    },
+    "bigDrift": {
+      "status": "shadow",
+      "label": "extreme drift ≥20%",
+      "n": 1,
+      "roi": 2.4,
+      "clv": 0,
+      "since": "2026-07-21T10:40:44.579Z"
     }
   }
 }

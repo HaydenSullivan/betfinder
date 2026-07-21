@@ -1,21 +1,21 @@
 {
-  "updatedAt": "2026-07-21T10:29:56.558Z",
-  "samples": 880,
+  "updatedAt": "2026-07-21T10:38:20.451Z",
+  "samples": 893,
   "global": {
     "voteWeight": 0.35,
-    "logLoss": 0.53739,
-    "samples": 880
+    "logLoss": 0.54342,
+    "samples": 893
   },
   "sports": {
     "football": {
       "voteWeight": 0.425,
-      "logLoss": 0.62765,
-      "samples": 204
+      "logLoss": 0.62508,
+      "samples": 207
     },
     "tennis": {
-      "voteWeight": 0.45,
-      "logLoss": 0.5021,
-      "samples": 596
+      "voteWeight": 0.475,
+      "logLoss": 0.51195,
+      "samples": 606
     }
   }
 }
