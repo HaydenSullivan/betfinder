@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-21T20:59:08.685Z",
+  "updatedAt": "2026-07-21T21:01:45.288Z",
   "rules": {
     "minSettled": 50,
     "promoteRoi": 0.02,
@@ -11,9 +11,9 @@
     "driftCrowd": {
       "status": "shadow",
       "label": "crowd-side drifted out",
-      "n": 20,
-      "roi": -0.048,
-      "clv": 0.00052,
+      "n": 21,
+      "roi": -0.0286,
+      "clv": 0.00049,
       "since": "2026-07-21T10:32:01.751Z"
     },
     "consensus": {
