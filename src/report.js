@@ -287,7 +287,8 @@ function buildReport(data) {
   </div>
   <div id="blocksWrap" hidden>
     <h2 class="blocksH2">Best pick per 3-hour window</h2>
-    <p class="note blocksNote">The top flagged edge in each upcoming 3-hour block across the next 24 h · respects the sport filter &amp; search.</p>
+    <p class="note blocksNote">The best available pick in each upcoming 3-hour block across the next 24 h. Green = a promoted flag;
+      otherwise the top research candidate, preferring drift-crowd (the one signal with positive out-of-sample evidence). Respects the sport filter &amp; search.</p>
     <div class="blocks" id="blocks"></div>
   </div>
   <section id="multiSec" hidden>
@@ -364,6 +365,10 @@ const signalLine = (key, s) => {
   const p = DATA.promotions && DATA.promotions.signals && DATA.promotions.signals[key];
   return (p && p.status === 'promoted' ? '<b>PROMOTED</b> ' : 'shadow ') + shadowTxt(s);
 };
+// Evidence ranking: drift-crowd survived a frozen out-of-sample test; the
+// others have not, so they only lead a window when nothing better fires.
+const SIGNAL_RANK = { driftCrowd: 1, bigDrift: 2, consensus: 3, voteSurge: 4 };
+const candRank = (o) => Math.min.apply(null, (o.candidateSignals || []).map(k => SIGNAL_RANK[k] || 9).concat([9]));
 const ATTR_LABEL = { 'src:model': 'Core model', 'src:driftCrowd': 'Drift signal', 'src:consensus': 'Consensus signal', 'src:bigDrift': 'Big-drift signal', 'src:voteSurge': 'Vote-surge signal' };
 const attrLabel = (key) => ATTR_LABEL[key] || (key.startsWith('sport:') ? sportLabel(key.slice(6)) : key);
 const signalBadges = (o) => (o.signals || []).map(k => '<span class="sbadge">' + (SIGNAL_BADGE[k] || k) + '</span>').join('');
@@ -439,18 +444,34 @@ function renderBlocks() {
     const bs = now + i * blockSec, be = bs + blockSec;
     const inBlock = games.filter(g => g.startTimestamp >= (i === 0 ? now - 300 : bs) && g.startTimestamp < be);
     if (!inBlock.length) continue;
+    // Prefer a promoted flag; otherwise fall back to the best research
+    // candidate, ranked by how much evidence backs its signal.
     let best = null;
+    let kind = null;
     for (const g of inBlock) for (const o of g.outcomes) if (o.flagged && (!best || o.ev > best.o.ev)) best = { g, o };
+    if (best) kind = 'flag';
+    else {
+      for (const g of inBlock) for (const o of g.outcomes) {
+        if (!o.candidateSignals || !o.candidateSignals.length) continue;
+        if (!best) { best = { g, o }; continue; }
+        const r = candRank(o), rb = candRank(best.o);
+        if (r < rb || (r === rb && o.ev > best.o.ev)) best = { g, o };
+      }
+      if (best) kind = 'candidate';
+    }
     const label = (i === 0 ? 'Next ' + blockH + 'h' : (i * blockH) + '–' + ((i + 1) * blockH) + 'h from now') + ' · until ' + clock(be);
     if (best) {
       blockBestKeys.add(best.g.id + '|' + best.o.name);
-      cards.push('<div class="block best"><div class="hd">' + label + '</div>'
-        + '<div class="pk">' + pickLabel(best.g, best.o.name) + ' <span class="badge">↑ +' + fmtPct(best.o.ev) + '</span></div>'
+      const tag = kind === 'flag'
+        ? '<span class="badge">↑ +' + fmtPct(best.o.ev) + '</span>'
+        : best.o.candidateSignals.map(k => '<span class="sbadge">' + (SIGNAL_BADGE[k] || k) + '</span>').join(' ');
+      cards.push('<div class="block ' + (kind === 'flag' ? 'best' : '') + '"><div class="hd">' + label + '</div>'
+        + '<div class="pk">' + pickLabel(best.g, best.o.name) + ' ' + tag + '</div>'
         + '<div class="meta">@ ' + fmtOdds(best.o.odds) + ' · ' + esc(sportLabel(best.g.sport)) + ' · ' + startsIn(best.g.startTimestamp) + '</div>'
         + '<div class="meta"><a href="' + esc(best.g.url) + '" target="_blank" rel="noopener">' + esc(best.g.home) + ' v ' + esc(best.g.away) + '</a></div></div>');
     } else {
       cards.push('<div class="block none"><div class="hd">' + label + '</div>'
-        + '<div class="dim">no flagged edge · ' + inBlock.length + ' game' + (inBlock.length > 1 ? 's' : '') + '</div></div>');
+        + '<div class="dim">nothing selected · ' + inBlock.length + ' game' + (inBlock.length > 1 ? 's' : '') + '</div></div>');
     }
   }
   document.getElementById('blocksWrap').hidden = cards.length === 0;
