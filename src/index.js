@@ -121,20 +121,28 @@ async function collectGames(client, config, windowHours) {
   }
   log(`  games in the next ${windowHours} h: ${inWindow.length}`);
 
-  // 4) Votes, recent form, and lineups for the games that made the cut.
+  // 4) Votes for every game; form + lineups only where a real crowd exists.
+  // High-volume low-liquidity sports (table tennis runs ~900 games/day) would
+  // otherwise triple the request bill for games that can never flag.
   if (inWindow.length) {
-    const paths = inWindow.flatMap((g) => [
-      `/api/v1/event/${g.id}/votes`,
-      `/api/v1/event/${g.id}/pregame-form`,
-      `/api/v1/event/${g.id}/lineups`,
-    ]);
-    const { results } = await client.getMany(paths, progressLine('votes, form, lineups'));
+    const votePaths = inWindow.map((g) => `/api/v1/event/${g.id}/votes`);
+    const { results: voteResults } = await client.getMany(votePaths, progressLine('votes'));
     for (const game of inWindow) {
-      const votesData = results.get(`/api/v1/event/${game.id}/votes`);
+      const votesData = voteResults.get(`/api/v1/event/${game.id}/votes`);
       game.votes = sofa.parseVotes(votesData && votesData.vote);
-      game.form = sofa.parsePregameForm(results.get(`/api/v1/event/${game.id}/pregame-form`));
-      game.lineups = sofa.parseLineups(results.get(`/api/v1/event/${game.id}/lineups`));
+      game.form = null;
+      game.lineups = null;
     }
+    const deep = inWindow.filter((g) => g.votes && g.votes.total >= (config.deepFetchMinVotes || 50));
+    if (deep.length) {
+      const paths = deep.flatMap((g) => [`/api/v1/event/${g.id}/pregame-form`, `/api/v1/event/${g.id}/lineups`]);
+      const { results } = await client.getMany(paths, progressLine('form, lineups'));
+      for (const game of deep) {
+        game.form = sofa.parsePregameForm(results.get(`/api/v1/event/${game.id}/pregame-form`));
+        game.lineups = sofa.parseLineups(results.get(`/api/v1/event/${game.id}/lineups`));
+      }
+    }
+    log(`  deep fetch: ${deep.length}/${inWindow.length} game(s) with ≥${config.deepFetchMinVotes || 50} votes`);
   }
   return inWindow;
 }
@@ -236,7 +244,9 @@ async function main() {
   let promotions = null;
   if (!args.mock) {
     promotions = evaluatePromotions(priorEntries, config, log);
-    const added = applyPromotedSignals(analyzed, promotions);
+    const priorLast = new Map();
+    for (const e of ledger.lastSnapshots(priorEntries)) priorLast.set(`${e.eventId}|${e.outcome}`, e);
+    const added = applyPromotedSignals(analyzed, promotions, priorLast);
     if (added) log(`  promoted signals flagged ${added} extra pick(s)`);
   }
 

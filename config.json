@@ -1,7 +1,8 @@
 {
   "windowHours": 24,
   "hotWindowHours": 3,
-  "sports": ["football", "tennis", "basketball", "baseball", "volleyball", "handball", "esports", "rugby", "aussie-rules", "ice-hockey", "american-football"],
+  "sports": ["football", "tennis", "basketball", "baseball", "volleyball", "handball", "esports", "rugby", "aussie-rules", "ice-hockey", "american-football", "darts", "table-tennis", "cricket"],
+  "deepFetchMinVotes": 50,
   "oddsProviderId": 1,
   "consensusProviderId": 5,
   "voteWeight": 0.35,
@@ -32,6 +33,7 @@
   "lineupPenalty": 0.03,
   "calibrationMinSamplesGlobal": 80,
   "calibrationMinSamplesSport": 200,
+  "sportGateMinSettled": 25,
   "promotion": {
     "minSettled": 50,
     "promoteRoi": 0.02,

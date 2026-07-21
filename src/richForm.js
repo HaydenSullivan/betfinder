@@ -16,6 +16,9 @@ const MARGIN_SCALE = {
   volleyball: 2, // sets
   'aussie-rules': 40,
   rugby: 21,
+  darts: 4, // legs/sets
+  'table-tennis': 2, // sets
+  cricket: 50, // runs — mutes margin, result dominates
 };
 
 // 7-day disk cache for team lookups (rankings move slowly).

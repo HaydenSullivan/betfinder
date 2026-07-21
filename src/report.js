@@ -14,6 +14,9 @@ const SPORT_LABELS = {
   'aussie-rules': 'AFL',
   'ice-hockey': 'Ice Hockey',
   'american-football': 'NFL',
+  darts: 'Darts',
+  'table-tennis': 'Table Tennis',
+  cricket: 'Cricket',
 };
 
 // Assemble everything the dashboard shows: current scan + settled record + calibration.
@@ -338,12 +341,12 @@ const shadowTxt = (s) => !s || !s.n
   ? 'collecting…'
   : s.n + ' settled, roi ' + (s.roi >= 0 ? '+' : '') + (s.roi * 100).toFixed(1) + '%'
     + (s.clv != null ? ', clv ' + (s.clv >= 0 ? '+' : '') + (s.clv * 100).toFixed(1) + '%' : '');
-const SIGNAL_BADGE = { driftCrowd: '⚡ drift signal', consensus: '⚡ consensus signal', bigDrift: '⚡ big-drift signal' };
+const SIGNAL_BADGE = { driftCrowd: '⚡ drift signal', consensus: '⚡ consensus signal', bigDrift: '⚡ big-drift signal', voteSurge: '⚡ vote-surge signal' };
 const signalLine = (key, s) => {
   const p = DATA.promotions && DATA.promotions.signals && DATA.promotions.signals[key];
   return (p && p.status === 'promoted' ? '<b>PROMOTED</b> ' : 'shadow ') + shadowTxt(s);
 };
-const ATTR_LABEL = { 'src:model': 'Core model', 'src:driftCrowd': 'Drift signal', 'src:consensus': 'Consensus signal', 'src:bigDrift': 'Big-drift signal' };
+const ATTR_LABEL = { 'src:model': 'Core model', 'src:driftCrowd': 'Drift signal', 'src:consensus': 'Consensus signal', 'src:bigDrift': 'Big-drift signal', 'src:voteSurge': 'Vote-surge signal' };
 const attrLabel = (key) => ATTR_LABEL[key] || (key.startsWith('sport:') ? sportLabel(key.slice(6)) : key);
 const signalBadges = (o) => (o.signals || []).map(k => '<span class="sbadge">' + (SIGNAL_BADGE[k] || k) + '</span>').join('');
 
