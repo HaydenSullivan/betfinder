@@ -9,8 +9,10 @@ const { powerDeVig } = require('./analyzer');
 
 const PROMOTIONS_FILE = path.join(ledger.DATA_DIR, 'promotions.json');
 
-// Log-only research fields stored on every ledger entry.
-function researchFields(game, o) {
+// Log-only research fields stored on every ledger entry. `prior` is the most
+// recent previously-logged snapshot of the same outcome (dedupe means it is the
+// last *changed* state), enabling between-scan deltas like the vote surge.
+function researchFields(game, o, prior) {
   const drift = o.openingOdds ? Number(((o.odds - o.openingOdds) / o.openingOdds).toFixed(4)) : null;
   let b5Odds = null;
   let consensusEv = null;
@@ -24,13 +26,30 @@ function researchFields(game, o) {
   }
   const counts = game.votes ? game.votes.counts : null;
   const crowdMajority = counts ? ((counts['1'] || 0) > (counts['2'] || 0) ? '1' : '2') === o.name : false;
+  // Vote surge: crowd share jumped since the last logged snapshot while the
+  // price stood still — the crowd moving ahead of the bookmaker.
+  let voteShareDelta = null;
+  let oddsSincePrior = null;
+  if (prior && prior.voteShareRaw != null && o.voteShareRaw != null && prior.odds) {
+    voteShareDelta = Number((o.voteShareRaw - prior.voteShareRaw).toFixed(4));
+    oddsSincePrior = Number(((o.odds - prior.odds) / prior.odds).toFixed(4));
+  }
   return {
     drift,
     b5Odds,
     consensusEv,
     crowdMajority,
+    voteShareDelta,
     // H2 (validated out-of-sample): crowd-majority side whose price drifted out >=5%
     shadowDriftCrowd: Boolean(crowdMajority && drift !== null && drift >= 0.05 && game.totalVotes >= 100),
+    shadowVoteSurge: Boolean(
+      voteShareDelta !== null &&
+        voteShareDelta >= 0.03 &&
+        Math.abs(oddsSincePrior) <= 0.01 &&
+        (game.totalVotes || 0) >= 300 &&
+        o.odds <= 6 &&
+        o.name !== 'X'
+    ),
   };
 }
 
@@ -54,6 +73,13 @@ const SIGNALS = {
     badge: '⚡ big-drift signal',
     fires: (o, r) => r.drift != null && r.drift >= 0.2 && o.odds <= 6 && o.name !== 'X',
     settledMatch: (e) => e.drift != null && e.drift >= 0.2 && e.odds <= 6 && e.outcome !== 'X',
+  },
+  // Novel: crowd share rose >=3pts between scans while the price moved <=1%.
+  voteSurge: {
+    label: 'crowd surged, line static',
+    badge: '⚡ vote-surge signal',
+    fires: (o, r) => r.shadowVoteSurge,
+    settledMatch: (e) => e.shadowVoteSurge && e.odds <= 6 && e.outcome !== 'X',
   },
 };
 
@@ -119,12 +145,12 @@ function evaluatePromotions(entries, config, log = () => {}) {
 
 // Flag outcomes matched by promoted signals (mutates analyzed games).
 // Stashes o.research so the ledger logs identical values.
-function applyPromotedSignals(analyzed, promotions) {
+function applyPromotedSignals(analyzed, promotions, priorLast = new Map()) {
   let added = 0;
   for (const game of analyzed) {
     for (const o of game.outcomes) {
       if (o.voteShare === null) continue;
-      const r = researchFields(game, o);
+      const r = researchFields(game, o, priorLast.get(`${game.id}|${o.name}`));
       o.research = r;
       const hits = Object.keys(SIGNALS).filter((key) => {
         const p = promotions.signals[key];

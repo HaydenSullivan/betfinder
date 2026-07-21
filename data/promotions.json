@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-21T10:40:44.579Z",
+  "updatedAt": "2026-07-21T10:49:55.753Z",
   "rules": {
     "minSettled": 50,
     "promoteRoi": 0.02,
@@ -31,6 +31,14 @@
       "roi": 2.4,
       "clv": 0,
       "since": "2026-07-21T10:40:44.579Z"
+    },
+    "voteSurge": {
+      "status": "shadow",
+      "label": "crowd surged, line static",
+      "n": 0,
+      "roi": null,
+      "clv": null,
+      "since": "2026-07-21T10:49:55.753Z"
     }
   }
 }

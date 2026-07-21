@@ -57,6 +57,27 @@ function fitWeight(samples, config) {
   return best;
 }
 
+// Live per-sport flag gate: a sport whose settled flagged picks are clearly
+// losing gets a raised EV bar until its record recovers. Data-driven and
+// self-reversing — no hard-coded sport opinions.
+function sportGatesFrom(entries, config) {
+  const flagged = ledger.firstFlaggedSnapshots(entries).filter((e) => e.settled && e.result !== 'void');
+  const bySport = new Map();
+  for (const e of flagged) {
+    if (!bySport.has(e.sport)) bySport.set(e.sport, []);
+    bySport.get(e.sport).push(e);
+  }
+  const gates = {};
+  for (const [sport, list] of bySport) {
+    if (list.length < (config.sportGateMinSettled || 25)) continue;
+    const units = list.reduce((s, e) => s + (e.result === 'won' ? e.odds - 1 : -1), 0);
+    const roi = units / list.length;
+    if (roi < -0.25) gates[sport] = { evBump: 0.06, n: list.length, roi: Number(roi.toFixed(3)) };
+    else if (roi < -0.1) gates[sport] = { evBump: 0.03, n: list.length, roi: Number(roi.toFixed(3)) };
+  }
+  return gates;
+}
+
 // entries: full ledger. Uses the last snapshot per outcome, settled won/lost only,
 // with vote data present.
 function calibrate(entries, config, log = () => {}) {
@@ -93,9 +114,15 @@ function calibrate(entries, config, log = () => {}) {
     log(`  calibration: ${usable.length}/${config.calibrationMinSamplesGlobal} settled samples — using config default`);
   }
 
+  calibration.sportGates = sportGatesFrom(entries, config);
+  const gated = Object.entries(calibration.sportGates);
+  if (gated.length) {
+    log(`  sport gates: ${gated.map(([s, g]) => `${s} +${(g.evBump * 100).toFixed(0)}% EV bar (roi ${(g.roi * 100).toFixed(0)}%, n=${g.n})`).join(', ')}`);
+  }
+
   fs.mkdirSync(path.dirname(CALIBRATION_FILE), { recursive: true });
   fs.writeFileSync(CALIBRATION_FILE, JSON.stringify(calibration, null, 2));
   return calibration;
 }
 
-module.exports = { calibrate, loadCalibration, voteWeightFor, effectiveVoteWeight, fitWeight, logLossAt, CALIBRATION_FILE };
+module.exports = { calibrate, loadCalibration, voteWeightFor, effectiveVoteWeight, fitWeight, logLossAt, sportGatesFrom, CALIBRATION_FILE };

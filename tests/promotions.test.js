@@ -57,6 +57,46 @@ test('bigDrift signal fires on extreme drift regardless of crowd side', () => {
   assert.ok(!SIGNALS.bigDrift.settledMatch({ drift: 0.22, odds: 8.0, outcome: '2' })); // odds cap
 });
 
+test('voteSurge fires when crowd share jumps but the line stands still', () => {
+  const g = { totalVotes: 900, votes: { counts: { '1': 600, X: 0, '2': 300 } }, b5: null };
+  const o = { name: '1', odds: 2.0, openingOdds: 2.0, voteShareRaw: 0.67 };
+  const surge = researchFields(g, o, { voteShareRaw: 0.6, odds: 2.0 });
+  assert.ok(surge.shadowVoteSurge, 'share +7pts, odds unchanged');
+  assert.ok(Math.abs(surge.voteShareDelta - 0.07) < 1e-9);
+  const moved = researchFields(g, o, { voteShareRaw: 0.6, odds: 1.9 }); // line already moved 5%
+  assert.ok(!moved.shadowVoteSurge);
+  const noPrior = researchFields(g, o, undefined);
+  assert.ok(!noPrior.shadowVoteSurge);
+  assert.strictEqual(noPrior.voteShareDelta, null);
+});
+
+test('sport gate raises the EV bar only for clearly losing sports', () => {
+  const { sportGatesFrom } = require('../src/calibrate');
+  const mk = (sport, result, odds, i) => ({ eventId: 1000 + i, outcome: '1', sport, result, odds, settled: true, flagged: true, scanAt: 't' + i, startTimestamp: i });
+  const entries = [];
+  for (let i = 0; i < 30; i++) entries.push(mk('baseball', i < 8 ? 'won' : 'lost', 1.9, i)); // 27% hit at 1.9 -> deep loss
+  for (let i = 0; i < 30; i++) entries.push(mk('football', i < 16 ? 'won' : 'lost', 2.2, 100 + i)); // profitable
+  for (let i = 0; i < 10; i++) entries.push(mk('darts', 'lost', 2.0, 200 + i)); // losing but too few
+  const gates = sportGatesFrom(entries, { sportGateMinSettled: 25 });
+  assert.ok(gates.baseball && gates.baseball.evBump >= 0.03);
+  assert.ok(!gates.football);
+  assert.ok(!gates.darts);
+
+  const { analyzeGame } = require('../src/analyzer');
+  const config = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'config.json'), 'utf8'));
+  const game = (sport) => ({
+    id: 1, sport, home: 'H', away: 'A', homeFollowers: null, awayFollowers: null,
+    market: { outcomes: [ { name: '1', odds: 2.6, openingOdds: 2.6, change: 0 }, { name: '2', odds: 1.5, openingOdds: 1.5, change: 0 } ] },
+    votes: { counts: { '1': 8000, X: 0, '2': 2000 }, total: 10000 },
+  });
+  // Same sport, same game: only the gate differs.
+  const openPick = analyzeGame(game('football'), config, { sportGates: {} }).outcomes.find((o) => o.name === '1');
+  const gatedPick = analyzeGame(game('football'), config, { sportGates: { football: { evBump: 0.2 } } }).outcomes.find((o) => o.name === '1');
+  assert.ok(openPick.flagged, 'ungated flags normally');
+  assert.ok(Math.abs(openPick.ev - gatedPick.ev) < 1e-9, 'gate changes the bar, not the EV');
+  assert.ok(!gatedPick.flagged, 'gated sport needs the higher bar');
+});
+
 test('researchFields computes drift and crowd majority', () => {
   const g = { totalVotes: 500, votes: { counts: { '1': 400, X: 0, '2': 100 } }, b5: null };
   const r = researchFields(g, { name: '1', odds: 2.2, openingOdds: 2.0 });

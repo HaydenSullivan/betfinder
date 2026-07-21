@@ -110,12 +110,15 @@ function analyzeGame(game, config, calibration = null) {
 
     const ev = evRaw - penalty;
     const isDraw = outcome.name === 'X';
+    // Sports with a clearly losing live record must clear a raised EV bar.
+    const gateBump =
+      (calibration && calibration.sportGates && calibration.sportGates[game.sport] && calibration.sportGates[game.sport].evBump) || 0;
     const flagged =
       voteShare !== null &&
       votes.total >= config.minVotes &&
       outcome.odds <= config.maxOdds &&
       (!isDraw || config.flagDraws) &&
-      ev >= config.evThreshold;
+      ev >= config.evThreshold + gateBump;
 
     return {
       ...outcome,
