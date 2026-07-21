@@ -159,6 +159,16 @@ function buildReport(data) {
   .ringed { outline: 1.5px solid var(--good); border-radius: 6px; padding: 1px 5px; }
   .empty { padding: 18px 16px; color: var(--ink-2); }
   .staleWarn { border: 1px solid var(--warn); color: var(--warn); border-radius: 8px; padding: 8px 12px; margin: 0 0 16px; font-size: 13px; }
+  #blocksWrap { margin: 0 0 22px; }
+  .blocksH2 { font-size: 15px; margin: 8px 2px 2px; }
+  .blocksNote { margin: 0 2px 10px !important; }
+  .blocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .block { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .block.best { border-color: var(--good); }
+  .block .hd { font-size: 11px; color: var(--muted); margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+  .block .pk { font-weight: 600; line-height: 1.5; }
+  .block.none { opacity: 0.55; }
+  .bestmark { color: var(--good-text); font-size: 11px; font-weight: 650; margin-left: 4px; white-space: nowrap; }
   .chart { padding: 4px 16px 12px; }
   .chart svg { width: 100%; height: 150px; display: block; }
   footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
@@ -191,6 +201,11 @@ function buildReport(data) {
     <span><span class="sw" style="background:var(--draw)"></span>Draw</span>
     <span><span class="sw" style="background:var(--away)"></span>Away / player 2</span>
     <span class="dim">Form reads newest → oldest · ★ = quality-adjusted 0–100 (win margins + opponent rank)</span>
+  </div>
+  <div id="blocksWrap" hidden>
+    <h2 class="blocksH2">Best pick per 3-hour window</h2>
+    <p class="note blocksNote">The top flagged edge in each upcoming 3-hour block across the next 24 h · respects the sport filter &amp; search.</p>
+    <div class="blocks" id="blocks"></div>
   </div>
   <section>
     <h2>Flagged value bets — this scan</h2>
@@ -279,10 +294,10 @@ function voteBar(g) {
   return '<span class="bar">' + seg('h', get('1'), outcomeLabel(g, '1')) + seg('d', get('X'), 'Draw') + seg('a', get('2'), outcomeLabel(g, '2')) + '</span>'
     + ' <span class="dim">' + g.totalVotes.toLocaleString() + ' votes</span>';
 }
-function visibleGames() {
+function filteredGames(applyScope) {
   return DATA.games.filter(g => {
     if (!notStarted(g)) return false;
-    if (scope === 'hot' && g.startTimestamp > hotCutoff()) return false;
+    if (applyScope && scope === 'hot' && g.startTimestamp > hotCutoff()) return false;
     if (sportFilter && g.sport !== sportFilter) return false;
     if (query) {
       const hay = (g.home + ' ' + g.away + ' ' + g.tournament + ' ' + g.country).toLowerCase();
@@ -290,6 +305,42 @@ function visibleGames() {
     }
     return true;
   });
+}
+function visibleGames() { return filteredGames(true); }
+
+// Best flagged pick in each upcoming 3-hour block across the full 24h window.
+// Ignores the hot/all scope (the blocks ARE the time breakdown) but honours
+// sport filter + search. Populates blockBestKeys so renderFlags can mark them.
+let blockBestKeys = new Set();
+function renderBlocks() {
+  const games = filteredGames(false);
+  const now = NOW();
+  const blockH = DATA.config.hotWindowHours || 3;
+  const blockSec = blockH * 3600;
+  const spanSec = DATA.windowHours * 3600;
+  const clock = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  blockBestKeys = new Set();
+  const cards = [];
+  for (let i = 0; i * blockSec < spanSec; i++) {
+    const bs = now + i * blockSec, be = bs + blockSec;
+    const inBlock = games.filter(g => g.startTimestamp >= (i === 0 ? now - 300 : bs) && g.startTimestamp < be);
+    if (!inBlock.length) continue;
+    let best = null;
+    for (const g of inBlock) for (const o of g.outcomes) if (o.flagged && (!best || o.ev > best.o.ev)) best = { g, o };
+    const label = (i === 0 ? 'Next ' + blockH + 'h' : (i * blockH) + '–' + ((i + 1) * blockH) + 'h from now') + ' · until ' + clock(be);
+    if (best) {
+      blockBestKeys.add(best.g.id + '|' + best.o.name);
+      cards.push('<div class="block best"><div class="hd">' + label + '</div>'
+        + '<div class="pk">' + pickLabel(best.g, best.o.name) + ' <span class="badge">↑ +' + fmtPct(best.o.ev) + '</span></div>'
+        + '<div class="meta">@ ' + fmtOdds(best.o.odds) + ' · ' + esc(sportLabel(best.g.sport)) + ' · ' + startsIn(best.g.startTimestamp) + '</div>'
+        + '<div class="meta"><a href="' + esc(best.g.url) + '" target="_blank" rel="noopener">' + esc(best.g.home) + ' v ' + esc(best.g.away) + '</a></div></div>');
+    } else {
+      cards.push('<div class="block none"><div class="hd">' + label + '</div>'
+        + '<div class="dim">no flagged edge · ' + inBlock.length + ' game' + (inBlock.length > 1 ? 's' : '') + '</div></div>');
+    }
+  }
+  document.getElementById('blocksWrap').hidden = cards.length === 0;
+  document.getElementById('blocks').innerHTML = cards.join('');
 }
 function matchCell(g) {
   return '<td><div class="teams"><a href="' + esc(g.url) + '" target="_blank" rel="noopener">' + esc(g.home) + ' v ' + esc(g.away) + '</a></div>'
@@ -308,6 +359,7 @@ function renderFlags() {
     + rows.map(({ g, o }) =>
       '<tr><td>' + kickoff(g.startTimestamp) + '<div class="dim">' + startsIn(g.startTimestamp) + '</div></td>' + matchCell(g)
       + '<td class="pick">' + pickLabel(g, o.name) + warnBadges(o)
+      + (blockBestKeys.has(g.id + '|' + o.name) ? ' <span class="bestmark" title="Best flagged pick in its 3-hour window">◆ best of window</span>' : '')
       + (o.pinnacle ? '<div class="meta">Pinnacle ' + fmtPct(o.pinnacle.prob) + ' @ ' + fmtOdds(o.pinnacle.odds) + '</div>' : '') + '</td>'
       + '<td class="num" data-l="bet365 odds"><span class="ringed">' + fmtOdds(o.odds) + '</span> ' + driftCell(o) + '</td>'
       + '<td class="num" data-l="Market %">' + fmtPct(o.marketProb) + '</td>'
@@ -409,7 +461,7 @@ function renderCalibration() {
     + '<tr><td colspan="4" class="dim">Vote weight in use: ' + esc(vw) + '</td></tr>';
 }
 
-function render() { renderFlags(); renderAll(); }
+function render() { renderBlocks(); renderFlags(); renderAll(); }
 
 (function init() {
   const upcoming = DATA.games.filter(notStarted);
