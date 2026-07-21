@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-21T11:02:08.687Z",
+  "updatedAt": "2026-07-21T13:02:30.721Z",
   "rules": {
     "minSettled": 50,
     "promoteRoi": 0.02,
@@ -11,25 +11,25 @@
     "driftCrowd": {
       "status": "shadow",
       "label": "crowd-side drifted out",
-      "n": 0,
-      "roi": null,
-      "clv": null,
+      "n": 2,
+      "roi": -0.165,
+      "clv": 0,
       "since": "2026-07-21T10:32:01.751Z"
     },
     "consensus": {
       "status": "shadow",
       "label": "bet365 outlier vs 2nd book",
-      "n": 0,
-      "roi": null,
-      "clv": null,
+      "n": 1,
+      "roi": 0.3,
+      "clv": 0,
       "since": "2026-07-21T10:32:01.751Z"
     },
     "bigDrift": {
       "status": "shadow",
       "label": "extreme drift ≥20%",
-      "n": 2,
-      "roi": 1.675,
-      "clv": 0.15,
+      "n": 7,
+      "roi": 0.3357,
+      "clv": 0.4751,
       "since": "2026-07-21T10:40:44.579Z"
     },
     "voteSurge": {
