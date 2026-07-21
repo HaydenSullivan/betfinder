@@ -1,0 +1,42 @@
+{
+  "date": "2026-07-22",
+  "summary": "Three candidate edge sources tested with train/frozen-test discipline. All three negative. Nothing shipped into the flagging pipeline.",
+  "tests": [
+    {
+      "name": "Drift mechanism replication in Draw-No-Bet market",
+      "question": "The crowd-side-drifts-out edge works in 1X2. Does it replicate in an adjacent market on the same games?",
+      "data": "775 finished football games, 238 with Draw-No-Bet opening+closing prices",
+      "result": { "train": "+34.9% ROI (n=28)", "test": "+1.4% ROI (n=20)" },
+      "verdict": "INCONCLUSIVE — samples far too small and the test half is flat. Not adopted.",
+      "note": "DNB is also near-duplicative of the 1X2 bet, so a positive here would have added little independent value."
+    },
+    {
+      "name": "Both-teams-to-score crowd votes",
+      "question": "Sofascore serves a SECOND crowd vote (bothTeamsToScoreVote) on a market nobody cross-references. Does it beat the BTTS price?",
+      "data": "234 games with both BTTS odds and BTTS votes (votes present on all 775 games)",
+      "result": {
+        "marketOnlyLogloss": { "train": 0.6795, "test": 0.6767 },
+        "bestBlendOnTrain": { "w": 0.1, "logloss": 0.678 },
+        "thatWeightOnTest": 0.6819
+      },
+      "verdict": "NEGATIVE — blending crowd votes made out-of-sample log loss WORSE than market-only.",
+      "why": "The crowd is Yes-biased on essentially every game (all 228 games sat in the >0.15 vote-minus-market bucket) while the market is well calibrated: 52.7% predicted vs 52.2% actual. The vote encodes a taste for goals, not information."
+    },
+    {
+      "name": "Football Elo ratings model (src/ratings.js)",
+      "question": "Can a results-based ratings model add information the market lacks? This would be an edge independent of crowd sentiment and market movement.",
+      "data": "54,625 finished football matches (2009-2026), walk-forward: ratings built only from matches finishing before each prediction. 1,631 panel games predicted.",
+      "result": {
+        "ratingsOnlyLogloss": 1.0092,
+        "marketLogloss": 0.9556,
+        "bestBlendOnTrain": { "w": 0.2, "logloss": 0.9513 },
+        "frozenTest": { "blend": 0.9511, "marketOnly": 0.9494 }
+      },
+      "verdict": "NEGATIVE — the train-set improvement did not replicate. The blend is worse than the market alone out-of-sample.",
+      "bugFoundAndFixed": "A unit test caught marginMultiplier(0) returning 0, which meant draws produced zero rating change — discarding ~25% of football results. Fixed (floored at 1) and the backtest re-run: the negative verdict held, so the conclusion is not an artifact of that bug.",
+      "likelyCause": "Team histories come from /events/last/0 (~30 recent matches each), so many teams are sparse, and matches from leagues of very different strength are pooled without a league-strength prior. A stronger version would need per-league baselines and deeper history.",
+      "codeKept": "src/ratings.js retained and unit-tested as a foundation, but deliberately NOT wired into flagging."
+    }
+  ],
+  "standing": "drift-crowd (restricted to crowd-informative sports) remains the only component with positive out-of-sample evidence: frozen test +22.3% ROI over 94 bets."
+}

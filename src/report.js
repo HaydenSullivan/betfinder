@@ -299,21 +299,21 @@ function buildReport(data) {
     <p class="note multiFoot" id="multiFoot"></p>
   </section>
   <section>
-    <h2>Flagged picks — this scan</h2>
-    <p class="note staleWarn" style="margin:0 16px 10px">⚠ <b>Unproven.</b> On a 9,381-game backtest (train + frozen test, at both opening and closing prices)
-      the core vote-EV model returned <b>negative</b> ROI. The earlier positive result came from a 27-bet sample and did not survive the larger one.
-      Treat these as research candidates, not value bets — see data/research/finding-2026-07-22-core-model.json.
-      The drift-crowd signal is the only component with positive large-sample evidence, and it stays log-only until it earns promotion.</p>
-    <div class="scroller"><table id="flags"></table></div>
-    <div class="empty" id="flagsEmpty" hidden>No outcomes cleared the EV threshold this scan.</div>
-  </section>
-  <section>
-    <h2>Research candidates — signals firing now</h2>
-    <p class="note">Picks selected by the research signals, shown while they earn their live record. <b>Drift-crowd</b> is the only
-      component with positive large-sample evidence (frozen test: +16.8% ROI over 110 bets); the others are unvalidated. None of these
-      drive flags until the promotion gate clears them on live results.</p>
+    <h2>Research candidates — best available evidence</h2>
+    <p class="note">Picks selected by the research signals. <b>Drift-crowd</b> is the only component with positive out-of-sample evidence
+      (frozen test: <b>+22.3% ROI over 94 bets</b>, after restricting it to sports where the crowd carries information); big-drift and
+      consensus are unvalidated. None drive flags until the promotion gate clears them on live results — but on current evidence these
+      rank above the model flags below.</p>
     <div class="scroller"><table id="cands"></table></div>
     <div class="empty" id="candsEmpty" hidden>No research signals firing in this window.</div>
+  </section>
+  <section>
+    <h2>Model flags — unproven</h2>
+    <p class="note staleWarn" style="margin:0 16px 10px">⚠ <b>Negative expectancy in backtest.</b> On 9,381 games (train + frozen test, at both opening and
+      closing prices) the core vote-EV model returned <b>negative</b> ROI. The earlier positive result came from a 27-bet sample and did not
+      survive the larger one. Shown for research continuity only — see data/research/finding-2026-07-22-core-model.json.</p>
+    <div class="scroller"><table id="flags"></table></div>
+    <div class="empty" id="flagsEmpty" hidden>No outcomes cleared the EV threshold this scan.</div>
   </section>
   <section>
     <h2>All scanned games</h2>
