@@ -52,6 +52,7 @@
   "calibrationMinSamplesGlobal": 80,
   "calibrationMinSamplesSport": 200,
   "sportGateMinSettled": 25,
+  "calibrationPriorStrength": 400,
   "promotion": {
     "minSettled": 50,
     "promoteRoi": 0.02,

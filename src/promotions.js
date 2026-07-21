@@ -90,11 +90,13 @@ function scoreSignal(entries, match) {
     .filter(match);
   if (!list.length) return { n: 0, roi: null, clv: null };
   const pnl = list.reduce((s, e) => s + (e.result === 'won' ? e.odds - 1 : -1), 0);
-  const clvs = list.filter((e) => e.clv != null);
+  // CLV in implied-probability points — the odds-ratio form lets one longshot
+  // swamp the average, which would let a signal promote on a single outlier.
+  const clvs = list.filter((e) => e.closingOdds);
   return {
     n: list.length,
     roi: Number((pnl / list.length).toFixed(4)),
-    clv: clvs.length ? Number((clvs.reduce((s, e) => s + e.clv, 0) / clvs.length).toFixed(4)) : null,
+    clv: clvs.length ? Number((clvs.reduce((s, e) => s + (1 / e.closingOdds - 1 / e.odds), 0) / clvs.length).toFixed(5)) : null,
   };
 }
 

@@ -1,0 +1,29 @@
+{
+  "finding": "Core vote-EV model shows no demonstrated edge at scale",
+  "date": "2026-07-22",
+  "panel": { "games": 9381, "days": 7, "split": "train days -7..-4, frozen test -3..-1" },
+  "result": {
+    "atClosingPrices": {
+      "withLiveCalibration": "negative at every threshold (train -29% to -100%, test -19% to -43%)",
+      "withPriorsOnly": "ev>=0.05 train -17.3% test -8.5% (n=313/274); ev>=0.08 train -8.8% test -10.1% (n=203/153)"
+    },
+    "atOpeningPrices": {
+      "note": "tests the early-flag proposition the live tool actually runs",
+      "ev>=0.04": "train -55.0% (n=45), test -47.6% (n=35), CLV +1.85/+0.78 pts",
+      "ev>=0.08": "train -100% (n=8), test -71.3% (n=10), CLV +1.32/+0.08 pts"
+    }
+  },
+  "interpretation": [
+    "Positive CLV with negative ROI: the model picks sides the market drifts toward slightly, but they still lose more often than their price implies.",
+    "The earlier +14.5% out-of-sample result that justified evThreshold 0.08 came from a 674-game sample with only n=27 bets. On 9,381 games with n=153-313 bets the sign flips negative. That earlier validation was itself underpowered.",
+    "Live record (+10u over 95 settled picks) is consistent with variance, not edge — live avg CLV is only +0.60 probability points and just 33% of picks beat the close."
+  ],
+  "contrast": {
+    "driftCrowdSignal": "On this SAME 9,381-game panel the drift-crowd signal held up: train n=164 roi +6.1%, frozen test n=110 roi +16.8%. It remains the only component with positive large-sample evidence."
+  },
+  "actionTaken": [
+    "Core model flags labelled UNPROVEN on the dashboard rather than presented as value bets.",
+    "Promotion gate unchanged: drift-crowd must still earn 50 live settled bets with positive roi and CLV before it drives flags.",
+    "No threshold re-tuning — tuning a strategy with negative large-sample expectancy is how the earlier mistake happened."
+  ]
+}

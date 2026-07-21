@@ -141,10 +141,18 @@ test('draws are not flagged unless flagDraws; no-vote games never flag', () => {
   assert.strictEqual(noVotes.bestEv, -1);
 });
 
-test('calibration overrides the config vote weight per sport', () => {
-  const calibration = { global: { voteWeight: 0.1 }, sports: { football: { voteWeight: 0.05 } } };
-  const result = analyzeGame(game(), config, calibration);
-  assert.strictEqual(result.voteWeightUsed, 0.05);
-  const tennis = analyzeGame(game({ sport: 'tennis' }), config, calibration);
-  assert.strictEqual(tennis.voteWeightUsed, 0.1);
+test('calibration shrinks toward the prior instead of replacing it', () => {
+  const cfg = { ...config, voteWeightPriors: { football: 0.5 }, calibrationPriorStrength: 400 };
+  // A single bad week fits football to 0; shrinkage must keep it alive.
+  const calibration = { global: { voteWeight: 0.1, samples: 2000 }, sports: { football: { voteWeight: 0, samples: 400 } } };
+  const used = analyzeGame(game(), cfg, calibration).voteWeightUsed;
+  assert.ok(Math.abs(used - 0.25) < 1e-9, `expected (400*0 + 400*0.5)/800 = 0.25, got ${used}`);
+  assert.ok(used > 0, 'a zero fit must not silence the sport outright');
+
+  // With overwhelming live evidence the fit dominates.
+  const heavy = { sports: { football: { voteWeight: 0, samples: 40000 } } };
+  assert.ok(analyzeGame(game(), cfg, heavy).voteWeightUsed < 0.01);
+
+  // No fit at all -> pure prior.
+  assert.strictEqual(analyzeGame(game(), cfg, null).voteWeightUsed, 0.5);
 });

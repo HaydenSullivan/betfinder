@@ -103,7 +103,7 @@ function voteRefit(rows) {
 
 // Live-ledger analyses: CLV by flag lead time.
 function clvByLead() {
-  const flagged = ledger.firstFlaggedSnapshots(ledger.loadAllEntries()).filter((e) => e.settled && e.clv != null);
+  const flagged = ledger.firstFlaggedSnapshots(ledger.loadAllEntries()).filter((e) => e.settled && e.closingOdds);
   const out = {};
   for (const [lo, hi] of [[0, 2], [2, 6], [6, 12], [12, 48]]) {
     const sub = flagged.filter((e) => {
@@ -111,9 +111,11 @@ function clvByLead() {
       return lead >= lo && lead < hi;
     });
     if (sub.length) {
+      const pts = sub.map((e) => 1 / e.closingOdds - 1 / e.odds);
       out[`${lo}-${hi}h`] = {
         n: sub.length,
-        avgClv: +(sub.reduce((s, e) => s + e.clv, 0) / sub.length).toFixed(4),
+        avgClvPoints: +(pts.reduce((s, x) => s + x, 0) / pts.length).toFixed(5),
+        beatCloseRate: +(pts.filter((x) => x > 0.0005).length / pts.length).toFixed(3),
         units: +sub.reduce((s, e) => s + (e.result === 'won' ? e.odds - 1 : e.result === 'lost' ? -1 : 0), 0).toFixed(1),
       };
     }

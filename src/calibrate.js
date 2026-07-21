@@ -15,16 +15,25 @@ function loadCalibration() {
   }
 }
 
-// Fitted live weights win; otherwise backtest-seeded per-sport priors; otherwise default.
-function voteWeightFor(sport, calibration, config) {
-  if (calibration) {
-    if (calibration.sports && calibration.sports[sport]) return calibration.sports[sport].voteWeight;
-    if (calibration.global) return calibration.global.voteWeight;
-  }
+function priorFor(sport, config) {
   if (config.voteWeightPriors && config.voteWeightPriors[sport] !== undefined) {
     return config.voteWeightPriors[sport];
   }
   return config.voteWeight;
+}
+
+// Empirical-Bayes shrinkage: the live fit is blended toward the backtest-seeded
+// prior in proportion to how much live evidence exists. Without this, a single
+// bad week can fit a sport's weight to zero and silence it entirely — which is
+// exactly what one week of football did. Live data dominates as samples grow.
+function voteWeightFor(sport, calibration, config) {
+  const prior = priorFor(sport, config);
+  const k = config.calibrationPriorStrength || 400;
+  const fit = (calibration && calibration.sports && calibration.sports[sport])
+    || (calibration && calibration.global)
+    || null;
+  if (!fit || !fit.samples) return prior;
+  return (fit.samples * fit.voteWeight + k * prior) / (fit.samples + k);
 }
 
 // Effective crowd weight for a game: shrinks toward 0 for tiny vote counts
@@ -125,4 +134,4 @@ function calibrate(entries, config, log = () => {}) {
   return calibration;
 }
 
-module.exports = { calibrate, loadCalibration, voteWeightFor, effectiveVoteWeight, fitWeight, logLossAt, sportGatesFrom, CALIBRATION_FILE };
+module.exports = { calibrate, loadCalibration, voteWeightFor, priorFor, effectiveVoteWeight, fitWeight, logLossAt, sportGatesFrom, CALIBRATION_FILE };

@@ -44,6 +44,10 @@ function prepareReportData({ generatedAt, windowHours, config, games, calibratio
       odds: e.odds,
       closingOdds: e.closingOdds,
       clv: e.clv,
+      // CLV in implied-probability points. The odds-ratio form is dominated by
+      // longshots (15.00 -> 5.75 reads as +161%), which made the headline
+      // average meaningless; probability points weight every price fairly.
+      clvPoints: e.closingOdds ? 1 / e.closingOdds - 1 / e.odds : null,
       result: e.result,
       finalScore: e.finalScore,
       pnl,
@@ -54,6 +58,7 @@ function prepareReportData({ generatedAt, windowHours, config, games, calibratio
   const decided = recordPicks.filter((p) => p.result !== 'void');
   const wins = decided.filter((p) => p.result === 'won').length;
   const clvValues = recordPicks.filter((p) => p.clv !== null && p.clv !== undefined).map((p) => p.clv);
+  const clvPointValues = recordPicks.filter((p) => p.clvPoints != null).map((p) => p.clvPoints);
   const record = {
     picks: recordPicks,
     settled: decided.length,
@@ -62,6 +67,8 @@ function prepareReportData({ generatedAt, windowHours, config, games, calibratio
     roi: decided.length ? units / decided.length : null,
     units: Number(units.toFixed(2)),
     avgClv: clvValues.length ? clvValues.reduce((s, x) => s + x, 0) / clvValues.length : null,
+    avgClvPoints: clvPointValues.length ? clvPointValues.reduce((s, x) => s + x, 0) / clvPointValues.length : null,
+    beatCloseRate: clvPointValues.length ? clvPointValues.filter((x) => x > 0.0005).length / clvPointValues.length : null,
   };
 
   // Calibration buckets: every settled outcome (not just flagged), last snapshot.
@@ -89,11 +96,11 @@ function prepareReportData({ generatedAt, windowHours, config, games, calibratio
   const scoreShadow = (list) => {
     if (!list.length) return { n: 0, roi: null, clv: null };
     const pnl = list.reduce((s, e) => s + (e.result === 'won' ? e.odds - 1 : -1), 0);
-    const clvs = list.filter((e) => e.clv != null);
+    const clvs = list.filter((e) => e.closingOdds);
     return {
       n: list.length,
       roi: pnl / list.length,
-      clv: clvs.length ? clvs.reduce((s, e) => s + e.clv, 0) / clvs.length : null,
+      clv: clvs.length ? clvs.reduce((s, e) => s + (1 / e.closingOdds - 1 / e.odds), 0) / clvs.length : null,
     };
   };
   const shadows = {};
@@ -120,14 +127,14 @@ function prepareReportData({ generatedAt, windowHours, config, games, calibratio
       if (!decided.length) continue;
       const wins = decided.filter((e) => e.result === 'won').length;
       const units = decided.reduce((s, e) => s + (e.result === 'won' ? e.odds - 1 : -1), 0);
-      const clvs = list.filter((e) => e.clv != null);
+      const clvs = list.filter((e) => e.closingOdds);
       rows.push({
         key,
         n: decided.length,
         hit: wins / decided.length,
         units: Number(units.toFixed(2)),
         roi: units / decided.length,
-        clv: clvs.length ? clvs.reduce((s, e) => s + e.clv, 0) / clvs.length : null,
+        clv: clvs.length ? clvs.reduce((s, e) => s + (1 / e.closingOdds - 1 / e.odds), 0) / clvs.length : null,
       });
     }
     rows.sort((a, b) => (a.key < b.key ? -1 : 1));
@@ -291,8 +298,11 @@ function buildReport(data) {
     <p class="note multiFoot" id="multiFoot"></p>
   </section>
   <section>
-    <h2>Flagged value bets — this scan</h2>
-    <p class="note">Debiased crowd conviction + form beats the bet365 price by the required edge. Verify the live price on bet365 before betting.</p>
+    <h2>Flagged picks — this scan</h2>
+    <p class="note staleWarn" style="margin:0 16px 10px">⚠ <b>Unproven.</b> On a 9,381-game backtest (train + frozen test, at both opening and closing prices)
+      the core vote-EV model returned <b>negative</b> ROI. The earlier positive result came from a 27-bet sample and did not survive the larger one.
+      Treat these as research candidates, not value bets — see data/research/finding-2026-07-22-core-model.json.
+      The drift-crowd signal is the only component with positive large-sample evidence, and it stays log-only until it earns promotion.</p>
     <div class="scroller"><table id="flags"></table></div>
     <div class="empty" id="flagsEmpty" hidden>No outcomes cleared the EV threshold this scan.</div>
   </section>
@@ -340,7 +350,7 @@ const WARN_TEXT = { drift: '⚠ price drifting out', absences: '⚠ key absences
 const shadowTxt = (s) => !s || !s.n
   ? 'collecting…'
   : s.n + ' settled, roi ' + (s.roi >= 0 ? '+' : '') + (s.roi * 100).toFixed(1) + '%'
-    + (s.clv != null ? ', clv ' + (s.clv >= 0 ? '+' : '') + (s.clv * 100).toFixed(1) + '%' : '');
+    + (s.clv != null ? ', clv ' + (s.clv >= 0 ? '+' : '') + (s.clv * 100).toFixed(2) + 'pts' : '');
 const SIGNAL_BADGE = { driftCrowd: '⚡ drift signal', consensus: '⚡ consensus signal', bigDrift: '⚡ big-drift signal', voteSurge: '⚡ vote-surge signal' };
 const signalLine = (key, s) => {
   const p = DATA.promotions && DATA.promotions.signals && DATA.promotions.signals[key];
@@ -580,7 +590,7 @@ function renderRecord() {
       + '<td class="num">' + fmtPct(a.hit) + '</td>'
       + '<td class="num">' + (a.units >= 0 ? '+' : '') + a.units.toFixed(2) + 'u</td>'
       + '<td class="num">' + (a.roi >= 0 ? '+' : '') + fmtPct(a.roi) + '</td>'
-      + '<td class="num">' + (a.clv == null ? '—' : (a.clv >= 0 ? '+' : '') + fmtPct(a.clv)) + '</td></tr>';
+      + '<td class="num">' + (a.clv == null ? '—' : (a.clv >= 0 ? '+' : '') + (a.clv * 100).toFixed(2) + 'pts') + '</td></tr>';
     attr.innerHTML = '<tr><th>Where the results come from</th><th class="num">Settled</th><th class="num">Hit</th>'
       + '<th class="num">Units</th><th class="num">ROI</th><th class="num">Avg CLV</th></tr>'
       + srcRows.map(row).join('') + sportRows.map(row).join('');
@@ -654,7 +664,9 @@ function render() { renderBlocks(); renderFlags(); renderAll(); }
     [String(upcoming.length), 'games in window', ''],
     [r.settled ? (r.units >= 0 ? '+' : '') + r.units + 'u' : '—', 'profit (' + r.settled + ' settled picks)', r.settled ? (r.units >= 0 ? 'pos' : 'neg') : ''],
     [r.hitRate != null ? fmtPct(r.hitRate) : '—', 'hit rate', ''],
-    [r.avgClv != null ? (r.avgClv >= 0 ? '+' : '') + fmtPct(r.avgClv) : '—', 'avg closing line value', r.avgClv != null ? (r.avgClv >= 0 ? 'pos' : 'neg') : ''],
+    [r.avgClvPoints != null ? (r.avgClvPoints >= 0 ? '+' : '') + (r.avgClvPoints * 100).toFixed(2) + 'pts' : '—',
+      'avg CLV' + (r.beatCloseRate != null ? ' · beat close ' + fmtPct(r.beatCloseRate) : ''),
+      r.avgClvPoints != null ? (r.avgClvPoints >= 0 ? 'pos' : 'neg') : ''],
   ];
   document.getElementById('tiles').innerHTML = tiles.map(([v, l, cls]) =>
     '<div class="tile"><div class="v ' + cls + '">' + v + '</div><div class="l">' + l + '</div></div>').join('');

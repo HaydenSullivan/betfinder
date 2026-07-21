@@ -47,6 +47,18 @@ test('promoted drift signal flags a matching outcome; shadow does not', () => {
   assert.ok(g2.outcomes[0].research); // research fields still stashed for the ledger
 });
 
+test('CLV scoring uses probability points so one longshot cannot swamp it', () => {
+  const { scoreSignal } = require('../src/promotions');
+  const mk = (i, odds, closingOdds, result) => ({ eventId: i, outcome: '1', scanAt: 't' + i, settled: true, result, odds, closingOdds, shadowDriftCrowd: true });
+  // One extreme longshot (15.00 -> 5.75 = +161% by ratio) plus four flat picks.
+  const entries = [mk(1, 15, 5.75, 'lost'), mk(2, 2, 2, 'won'), mk(3, 2, 2, 'lost'), mk(4, 2, 2, 'won'), mk(5, 2, 2, 'lost')];
+  const s = scoreSignal(entries, (e) => e.shadowDriftCrowd);
+  assert.strictEqual(s.n, 5);
+  // Ratio-based averaging would give ~+32%; points-based gives ~+2.1 points.
+  assert.ok(s.clv < 0.05, `clv should stay small in points space, got ${s.clv}`);
+  assert.ok(s.clv > 0, 'still positive — the longshot did beat the close');
+});
+
 test('bigDrift signal fires on extreme drift regardless of crowd side', () => {
   const { SIGNALS } = require('../src/promotions');
   const g = { totalVotes: 50, votes: { counts: { '1': 10, X: 0, '2': 40 } }, b5: null };
