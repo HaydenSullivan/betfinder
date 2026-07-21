@@ -5,10 +5,12 @@ const { buildLegPool, searchCombos, selectDiverse, buildMultis, DEFAULTS } = req
 const NOW = 1_700_000_000;
 
 // A game whose single outcome `1` is a strong-ish pick at the given price.
+// Each game gets its own sport so the per-sport cap only binds when a test
+// assigns shared sports deliberately.
 function game(id, odds, estProb, overrides = {}) {
   return {
     id,
-    sport: 'football',
+    sport: 'sport' + id,
     home: 'Home' + id,
     away: 'Away' + id,
     tournament: 'League' + id,
@@ -85,6 +87,36 @@ test('legs from the same competition are capped', () => {
     const same = m.legs.filter((l) => l.tournament === 'Same').length;
     assert.ok(same <= 2, 'at most 2 legs from one competition, got ' + same);
   }
+});
+
+test('legs from the same sport are capped at maxPerSport', () => {
+  const games = [];
+  for (let i = 1; i <= 8; i++) {
+    games.push(game(i, 1.8, 0.75, { sport: i <= 4 ? 'tennis' : 'football' }));
+  }
+  const { combos } = searchCombos(pool(games), { ...DEFAULTS, maxPerSport: 2 });
+  assert.ok(combos.length > 0);
+  for (const m of combos) {
+    const perSport = {};
+    for (const l of m.legs) perSport[l.sport] = (perSport[l.sport] || 0) + 1;
+    for (const [sport, count] of Object.entries(perSport)) {
+      assert.ok(count <= 2, 'at most 2 legs from ' + sport + ', got ' + count);
+    }
+  }
+  // With only two sports and max 2 each, nothing longer than 4 legs can exist.
+  assert.ok(combos.every((m) => m.legCount === 4));
+});
+
+test('pool share per sport is capped so one sport cannot crowd out the rest', () => {
+  const games = [];
+  // Tennis legs have the best EV and would fill the whole pool uncapped…
+  for (let i = 1; i <= 10; i++) games.push(game(i, 2, 0.8, { sport: 'tennis' }));
+  // …while slightly worse football legs still deserve slots.
+  for (let i = 11; i <= 14; i++) games.push(game(i, 2, 0.7, { sport: 'football' }));
+  const legs = pool(games, { poolPerSport: 3, poolSize: 6 });
+  assert.strictEqual(legs.length, 6);
+  assert.strictEqual(legs.filter((l) => l.sport === 'tennis').length, 3);
+  assert.strictEqual(legs.filter((l) => l.sport === 'football').length, 3);
 });
 
 test('combined probability and EV are the products of the legs', () => {

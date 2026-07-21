@@ -32,6 +32,13 @@
   "lineupPenalty": 0.03,
   "calibrationMinSamplesGlobal": 80,
   "calibrationMinSamplesSport": 200,
+  "promotion": {
+    "minSettled": 50,
+    "promoteRoi": 0.02,
+    "promoteClv": 0,
+    "demoteRoi": 0,
+    "demoteClv": -0.005
+  },
   "multi": {
     "enabled": true,
     "windows": [12, 24],
@@ -46,7 +53,9 @@
     "minLegVotes": 300,
     "includeDraws": false,
     "maxPerTournament": 2,
+    "maxPerSport": 2,
     "poolSize": 40,
+    "poolPerSport": 12,
     "shrinkToMarket": 0.25,
     "count": 6,
     "maxSharedLegs": 2

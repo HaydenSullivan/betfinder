@@ -8,7 +8,8 @@ const path = require('path');
 const { execFile } = require('child_process');
 const { BrowserClient } = require('./browserClient');
 const sofa = require('./sofascore');
-const { analyzeAll, powerDeVig } = require('./analyzer');
+const { analyzeAll } = require('./analyzer');
+const { researchFields, evaluatePromotions, applyPromotedSignals } = require('./promotions');
 const { buildMultis } = require('./multi');
 const { buildReport, prepareReportData } = require('./report');
 const ledger = require('./ledger');
@@ -138,32 +139,6 @@ async function collectGames(client, config, windowHours) {
   return inWindow;
 }
 
-// Log-only research fields for the shadow-signal program: stored on every
-// entry so settled results score each signal live before any promotion.
-function researchFields(game, o) {
-  const drift = o.openingOdds ? Number(((o.odds - o.openingOdds) / o.openingOdds).toFixed(4)) : null;
-  let b5Odds = null;
-  let consensusEv = null;
-  if (game.b5) {
-    const match = game.b5.outcomes.find((x) => x.name === o.name);
-    if (match) {
-      b5Odds = match.odds;
-      const priced = powerDeVig(game.b5.outcomes).find((x) => x.name === o.name);
-      if (priced) consensusEv = Number((priced.marketProb * o.odds - 1).toFixed(4));
-    }
-  }
-  const counts = game.votes ? game.votes.counts : null;
-  const crowdMajority = counts ? ((counts['1'] || 0) > (counts['2'] || 0) ? '1' : '2') === o.name : false;
-  return {
-    drift,
-    b5Odds,
-    consensusEv,
-    crowdMajority,
-    // H2 (validated out-of-sample): crowd-majority side whose price drifted out >=5%
-    shadowDriftCrowd: Boolean(crowdMajority && drift !== null && drift >= 0.05 && game.totalVotes >= 100),
-  };
-}
-
 function toLedgerEntries(analyzed, scanAt) {
   const entries = [];
   for (const game of analyzed) {
@@ -193,7 +168,8 @@ function toLedgerEntries(analyzed, scanAt) {
         penalty: o.penalty,
         warnings: o.warnings,
         flagged: o.flagged,
-        ...researchFields(game, o),
+        signals: o.signals || [],
+        ...(o.research || researchFields(game, o)),
         url: game.url,
         settled: false,
       });
@@ -255,6 +231,15 @@ async function main() {
     }
   }
 
+  // Promotion gate: shadow signals that have earned it on live settled
+  // evidence start flagging; decayed ones stop. Log-only until then.
+  let promotions = null;
+  if (!args.mock) {
+    promotions = evaluatePromotions(priorEntries, config, log);
+    const added = applyPromotedSignals(analyzed, promotions);
+    if (added) log(`  promoted signals flagged ${added} extra pick(s)`);
+  }
+
   const flagCount = analyzed.reduce((s, g) => s + g.flags.length, 0);
 
   if (!args.mock && process.env.ODDS_API_KEY && flagCount) {
@@ -273,6 +258,7 @@ async function main() {
     generatedAt: scanAt,
     windowHours,
     multis,
+    promotions,
     config: {
       minVotes: config.minVotes,
       evThreshold: config.evThreshold,

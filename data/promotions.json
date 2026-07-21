@@ -1,0 +1,28 @@
+{
+  "updatedAt": "2026-07-21T10:32:01.751Z",
+  "rules": {
+    "minSettled": 50,
+    "promoteRoi": 0.02,
+    "promoteClv": 0,
+    "demoteRoi": 0,
+    "demoteClv": -0.005
+  },
+  "signals": {
+    "driftCrowd": {
+      "status": "shadow",
+      "label": "crowd-side drifted out",
+      "n": 1,
+      "roi": 0.4444,
+      "clv": 0.0317,
+      "since": "2026-07-21T10:32:01.751Z"
+    },
+    "consensus": {
+      "status": "shadow",
+      "label": "bet365 outlier vs 2nd book",
+      "n": 0,
+      "roi": null,
+      "clv": null,
+      "since": "2026-07-21T10:32:01.751Z"
+    }
+  }
+}

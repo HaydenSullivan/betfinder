@@ -26,7 +26,9 @@ const DEFAULTS = {
   minLegVotes: 300,
   includeDraws: false,
   maxPerTournament: 2,
+  maxPerSport: 2,
   poolSize: 40,
+  poolPerSport: 12,
   shrinkToMarket: 0.25,
   count: 6,
   maxSharedLegs: 2,
@@ -76,7 +78,18 @@ function buildLegPool(games, opts, nowSec) {
     }
   }
   legs.sort((a, b) => b.ev - a.ev);
-  return legs.slice(0, opts.poolSize).sort((a, b) => a.odds - b.odds);
+  // Cap each sport's pool share: with only maxPerSport legs usable per multi, a
+  // sport-heavy day would otherwise fill the pool with legs the search can't combine.
+  const bySport = new Map();
+  const pool = [];
+  for (const leg of legs) {
+    if (pool.length >= opts.poolSize) break;
+    const used = bySport.get(leg.sport) || 0;
+    if (used >= opts.poolPerSport) continue;
+    bySport.set(leg.sport, used + 1);
+    pool.push(leg);
+  }
+  return pool.sort((a, b) => a.odds - b.odds);
 }
 
 function summarize(legs) {
@@ -141,6 +154,7 @@ function searchCombos(pool, opts) {
   const chosen = [];
   const usedEvents = new Set();
   const tourCount = new Map();
+  const sportCount = new Map();
   let nodes = 0;
   let total = 0;
 
@@ -163,6 +177,7 @@ function searchCombos(pool, opts) {
       if (odds > opts.maxOdds) break; // ascending odds — nothing later fits either
       if (usedEvents.has(leg.eventId)) continue;
       if ((tourCount.get(leg.tournament) || 0) >= opts.maxPerTournament) continue;
+      if ((sportCount.get(leg.sport) || 0) >= opts.maxPerSport) continue;
       // Can this branch still reach minOdds with the legs it has room for?
       const room = opts.maxLegs - chosen.length - 1;
       if (odds * tail[Math.min(room, n - 1 - i)] < opts.minOdds) continue;
@@ -170,7 +185,9 @@ function searchCombos(pool, opts) {
       chosen.push(leg);
       usedEvents.add(leg.eventId);
       tourCount.set(leg.tournament, (tourCount.get(leg.tournament) || 0) + 1);
+      sportCount.set(leg.sport, (sportCount.get(leg.sport) || 0) + 1);
       dfs(i + 1, odds, probProd * leg.prob);
+      sportCount.set(leg.sport, sportCount.get(leg.sport) - 1);
       tourCount.set(leg.tournament, tourCount.get(leg.tournament) - 1);
       usedEvents.delete(leg.eventId);
       chosen.pop();
@@ -244,6 +261,7 @@ function buildMultis(games, config, nowSec = Date.now() / 1000) {
       maxLegs: opts.maxLegs,
       shrinkToMarket: opts.shrinkToMarket,
       maxPerTournament: opts.maxPerTournament,
+      maxPerSport: opts.maxPerSport,
     },
   };
 }

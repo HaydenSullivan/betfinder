@@ -16,7 +16,7 @@ const SPORT_LABELS = {
 };
 
 // Assemble everything the dashboard shows: current scan + settled record + calibration.
-function prepareReportData({ generatedAt, windowHours, config, games, calibration, ledgerEntries, multis }) {
+function prepareReportData({ generatedAt, windowHours, config, games, calibration, ledgerEntries, multis, promotions }) {
   const entries = ledgerEntries || [];
 
   // Record: earliest flagged snapshot per outcome, settled only, flat 1-unit stakes.
@@ -108,6 +108,7 @@ function prepareReportData({ generatedAt, windowHours, config, games, calibratio
     record,
     buckets,
     shadows,
+    promotions: promotions || null,
     calibration: calibration || null,
     sportLabels: SPORT_LABELS,
   };
@@ -169,6 +170,7 @@ function buildReport(data) {
   .pick { font-weight: 650; }
   .badge { display: inline-block; border: 1px solid var(--good); color: var(--good-text); border-radius: 6px; padding: 1px 8px; font-weight: 650; font-variant-numeric: tabular-nums; }
   .wbadge { display: inline-block; border: 1px solid var(--warn); color: var(--warn); border-radius: 6px; padding: 0 6px; font-size: 12px; margin-left: 4px; }
+  .sbadge { display: inline-block; border: 1px solid var(--home); color: var(--home); border-radius: 6px; padding: 0 6px; font-size: 12px; margin-left: 4px; }
   .res-won { color: var(--good-text); font-weight: 650; } .res-lost { color: var(--loss); font-weight: 650; } .res-void { color: var(--muted); }
   .drift { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .bar { display: inline-flex; width: 130px; height: 10px; border-radius: 4px; overflow: hidden; gap: 2px; vertical-align: 1px; }
@@ -301,6 +303,12 @@ const shadowTxt = (s) => !s || !s.n
   ? 'collecting…'
   : s.n + ' settled, roi ' + (s.roi >= 0 ? '+' : '') + (s.roi * 100).toFixed(1) + '%'
     + (s.clv != null ? ', clv ' + (s.clv >= 0 ? '+' : '') + (s.clv * 100).toFixed(1) + '%' : '');
+const SIGNAL_BADGE = { driftCrowd: '⚡ drift signal', consensus: '⚡ consensus signal' };
+const signalLine = (key, s) => {
+  const p = DATA.promotions && DATA.promotions.signals && DATA.promotions.signals[key];
+  return (p && p.status === 'promoted' ? '<b>PROMOTED</b> ' : 'shadow ') + shadowTxt(s);
+};
+const signalBadges = (o) => (o.signals || []).map(k => '<span class="sbadge">' + (SIGNAL_BADGE[k] || k) + '</span>').join('');
 
 let sportFilter = null, query = '', scope = 'all';
 // All time filtering is relative to when the page is VIEWED, not when it was
@@ -405,7 +413,7 @@ function renderMultis() {
     'Multibets — ' + s.minLegs + '–' + s.maxLegs + ' legs, $' + s.minOdds + '–$' + s.maxOdds;
   document.getElementById('multiNote').innerHTML =
     'Best combinations of the model\\'s strongest picks across the next ' + win.hours + ' h. '
-    + 'One leg per match, max ' + s.maxPerTournament + ' per competition, and each leg\\'s probability is shrunk '
+    + 'One leg per match, max ' + s.maxPerTournament + ' per competition, max ' + s.maxPerSport + ' per sport, and each leg\\'s probability is shrunk '
     + Math.round(s.shrinkToMarket * 100) + '% toward the market price before multiplying. '
     + '<b>Multi EV compounds model error</b> — six legs each 3 points optimistic is a multi ~20% overstated, so read the '
     + 'EV as a ranking, not a promise, and compare it with what the market implies. Re-check every leg on bet365.';
@@ -453,7 +461,7 @@ function renderFlags() {
     + '<th class="num">Market %</th><th class="num">Crowd %</th><th>Form (H v A)</th><th class="num">Model %</th><th class="num">EV</th></tr>'
     + rows.map(({ g, o }) =>
       '<tr><td>' + kickoff(g.startTimestamp) + '<div class="dim">' + startsIn(g.startTimestamp) + '</div></td>' + matchCell(g)
-      + '<td class="pick">' + pickLabel(g, o.name) + warnBadges(o)
+      + '<td class="pick">' + pickLabel(g, o.name) + warnBadges(o) + signalBadges(o)
       + (blockBestKeys.has(g.id + '|' + o.name) ? ' <span class="bestmark" title="Best flagged pick in its 3-hour window">◆ best of window</span>' : '')
       + (o.pinnacle ? '<div class="meta">Pinnacle ' + fmtPct(o.pinnacle.prob) + ' @ ' + fmtOdds(o.pinnacle.odds) + '</div>' : '') + '</td>'
       + '<td class="num" data-l="bet365 odds"><span class="ringed">' + fmtOdds(o.odds) + '</span> ' + driftCell(o) + '</td>'
@@ -554,9 +562,9 @@ function renderCalibration() {
       '<tr><td>' + b.label + '</td><td class="num">' + b.n + '</td><td class="num">' + fmtPct(b.predicted) + '</td><td class="num">' + fmtPct(b.actual) + '</td></tr>'
     ).join('')
     + '<tr><td colspan="4" class="dim">Vote weight in use: ' + esc(vw) + '</td></tr>'
-    + '<tr><td colspan="4" class="dim">Shadow signals (log-only, promote on live evidence): '
-    + 'crowd-side drifted out — ' + shadowTxt(DATA.shadows && DATA.shadows.driftCrowd)
-    + ' · bet365 outlier vs 2nd book — ' + shadowTxt(DATA.shadows && DATA.shadows.consensus) + '</td></tr>';
+    + '<tr><td colspan="4" class="dim">Research signals (auto-promote at 50+ settled with positive roi &amp; clv): '
+    + 'crowd-side drifted out — ' + signalLine('driftCrowd', DATA.shadows && DATA.shadows.driftCrowd)
+    + ' · bet365 outlier vs 2nd book — ' + signalLine('consensus', DATA.shadows && DATA.shadows.consensus) + '</td></tr>';
 }
 
 function render() { renderBlocks(); renderFlags(); renderAll(); }
