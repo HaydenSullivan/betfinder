@@ -1,7 +1,22 @@
 {
   "windowHours": 24,
   "hotWindowHours": 3,
-  "sports": ["football", "tennis", "basketball", "baseball", "volleyball", "handball", "esports", "rugby", "aussie-rules", "ice-hockey", "american-football", "darts", "table-tennis", "cricket"],
+  "sports": [
+    "football",
+    "tennis",
+    "basketball",
+    "baseball",
+    "volleyball",
+    "handball",
+    "esports",
+    "rugby",
+    "aussie-rules",
+    "ice-hockey",
+    "american-football",
+    "darts",
+    "table-tennis",
+    "cricket"
+  ],
   "deepFetchMinVotes": 50,
   "oddsProviderId": 1,
   "consensusProviderId": 5,
@@ -13,7 +28,10 @@
     "baseball": 0.2,
     "volleyball": 0.05,
     "handball": 0.4,
-    "american-football": 0.2
+    "american-football": 0.2,
+    "table-tennis": 0.05,
+    "darts": 0.4,
+    "cricket": 0.35
   },
   "votePrior": 500,
   "voteCeiling": 15000,
@@ -43,7 +61,10 @@
   },
   "multi": {
     "enabled": true,
-    "windows": [12, 24],
+    "windows": [
+      12,
+      24
+    ],
     "minOdds": 10,
     "maxOdds": 20,
     "minLegs": 4,
