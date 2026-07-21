@@ -9,6 +9,25 @@ const { powerDeVig } = require('./analyzer');
 
 const PROMOTIONS_FILE = path.join(ledger.DATA_DIR, 'promotions.json');
 
+// A crowd-derived signal can only work in sports where the crowd carries
+// information. Sports whose fitted vote weight is near zero (basketball,
+// volleyball, table tennis) are excluded — panel data agrees: drift-crowd
+// lost in basketball across both the train and frozen-test halves.
+const CROWD_INFORMATIVE_MIN = 0.15;
+let cfgCache = null;
+function crowdInformative(sport) {
+  if (!cfgCache) {
+    try {
+      cfgCache = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config.json'), 'utf8'));
+    } catch {
+      cfgCache = {};
+    }
+  }
+  const priors = cfgCache.voteWeightPriors || {};
+  const w = priors[sport] !== undefined ? priors[sport] : cfgCache.voteWeight;
+  return w === undefined || w >= CROWD_INFORMATIVE_MIN;
+}
+
 // Log-only research fields stored on every ledger entry. `prior` is the most
 // recent previously-logged snapshot of the same outcome (dedupe means it is the
 // last *changed* state), enabling between-scan deltas like the vote surge.
@@ -57,8 +76,8 @@ const SIGNALS = {
   driftCrowd: {
     label: 'crowd-side drifted out',
     badge: '⚡ drift signal',
-    fires: (o, r) => r.shadowDriftCrowd && o.odds <= 6 && o.name !== 'X',
-    settledMatch: (e) => e.shadowDriftCrowd && e.odds <= 6 && e.outcome !== 'X',
+    fires: (o, r, game) => r.shadowDriftCrowd && o.odds <= 6 && o.name !== 'X' && crowdInformative(game && game.sport),
+    settledMatch: (e) => e.shadowDriftCrowd && e.odds <= 6 && e.outcome !== 'X' && crowdInformative(e.sport),
   },
   consensus: {
     label: 'bet365 outlier vs 2nd book',
@@ -156,7 +175,7 @@ function applyPromotedSignals(analyzed, promotions, priorLast = new Map()) {
       o.research = r;
       // Every signal that fires, regardless of promotion status — so the
       // dashboard can show research candidates while they earn their record.
-      const firing = Object.keys(SIGNALS).filter((key) => SIGNALS[key].fires(o, r));
+      const firing = Object.keys(SIGNALS).filter((key) => SIGNALS[key].fires(o, r, game));
       if (firing.length) o.candidateSignals = firing;
       const hits = firing.filter((key) => {
         const p = promotions.signals[key];

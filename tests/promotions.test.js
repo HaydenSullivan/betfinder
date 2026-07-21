@@ -59,6 +59,19 @@ test('CLV scoring uses probability points so one longshot cannot swamp it', () =
   assert.ok(s.clv > 0, 'still positive — the longshot did beat the close');
 });
 
+test('drift-crowd skips sports whose crowd carries no information', () => {
+  const { SIGNALS } = require('../src/promotions');
+  const r = { shadowDriftCrowd: true };
+  const o = { name: '1', odds: 2.0 };
+  // football prior 0.5 -> crowd informative; basketball 0.05 -> excluded
+  assert.ok(SIGNALS.driftCrowd.fires(o, r, { sport: 'football' }));
+  assert.ok(!SIGNALS.driftCrowd.fires(o, r, { sport: 'basketball' }));
+  assert.ok(!SIGNALS.driftCrowd.fires(o, r, { sport: 'table-tennis' }));
+  // settled scoring must apply the same filter, or live records disagree
+  assert.ok(SIGNALS.driftCrowd.settledMatch({ shadowDriftCrowd: true, odds: 2, outcome: '1', sport: 'football' }));
+  assert.ok(!SIGNALS.driftCrowd.settledMatch({ shadowDriftCrowd: true, odds: 2, outcome: '1', sport: 'basketball' }));
+});
+
 test('bigDrift signal fires on extreme drift regardless of crowd side', () => {
   const { SIGNALS } = require('../src/promotions');
   const g = { totalVotes: 50, votes: { counts: { '1': 10, X: 0, '2': 40 } }, b5: null };
