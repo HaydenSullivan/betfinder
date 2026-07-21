@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-07-21T20:18:28.683Z",
+  "days": 1,
+  "capPerSportDay": 15,
+  "games": 55,
+  "withSecondBook": 16,
+  "signals": {
+    "driftCrowd": {
+      "n": 8,
+      "hit": 0.25,
+      "roi": -0.517,
+      "units": -4.1
+    },
+    "bigDrift": {
+      "n": 6,
+      "hit": 0.333,
+      "roi": -0.175,
+      "units": -1
+    },
+    "consensus": {
+      "n": 1,
+      "hit": 1,
+      "roi": 1.3,
+      "units": 1.3
+    }
+  },
+  "voteWeightRefit": {},
+  "clvByFlagLead": {
+    "0-2h": {
+      "n": 6,
+      "avgClv": 0,
+      "units": 1.7
+    },
+    "2-6h": {
+      "n": 20,
+      "avgClv": 0.0103,
+      "units": 6.9
+    },
+    "6-12h": {
+      "n": 21,
+      "avgClv": -0.0069,
+      "units": -1.6
+    },
+    "12-48h": {
+      "n": 20,
+      "avgClv": 0.1228,
+      "units": 0.2
+    }
+  }
+}

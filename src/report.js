@@ -617,6 +617,12 @@ function renderCalibration() {
       '<tr><td>' + b.label + '</td><td class="num">' + b.n + '</td><td class="num">' + fmtPct(b.predicted) + '</td><td class="num">' + fmtPct(b.actual) + '</td></tr>'
     ).join('')
     + '<tr><td colspan="4" class="dim">Vote weight in use: ' + esc(vw) + '</td></tr>'
+    + (DATA.calibration && DATA.calibration.sportGates && Object.keys(DATA.calibration.sportGates).length
+      ? '<tr><td colspan="4" class="dim">Sport gates active (raised EV bar until the live record recovers): '
+        + Object.entries(DATA.calibration.sportGates).map(([s, g]) =>
+            esc(sportLabel(s)) + ' +' + (g.evBump * 100).toFixed(0) + '% (roi ' + (g.roi * 100).toFixed(0) + '%, n=' + g.n + ')').join(' · ')
+        + '</td></tr>'
+      : '')
     + '<tr><td colspan="4" class="dim">Research signals (auto-promote at 50+ settled with positive roi &amp; clv): '
     + Object.entries(DATA.shadows || {}).map(([k, s]) => esc(s.label) + ' — ' + signalLine(k, s)).join(' · ')
     + '</td></tr>';
