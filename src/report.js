@@ -162,6 +162,22 @@ function buildReport(data) {
   .chart { padding: 4px 16px 12px; }
   .chart svg { width: 100%; height: 150px; display: block; }
   footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
+  /* Mobile: the three main tables become stacked cards, no sideways scrolling */
+  @media (max-width: 760px) {
+    .wrap { padding: 14px 10px 40px; }
+    table { min-width: 0; }
+    .scroller { overflow-x: visible; }
+    #flags, #all, #record { display: block; }
+    #flags tr:first-child, #all tr:first-child, #record tr:first-child { display: none; }
+    #flags tr, #all tr, #record tr { display: block; border: 1px solid var(--grid); border-radius: 10px; margin: 10px 0; padding: 8px 12px; }
+    #flags td, #all td, #record td { display: inline-block; border: none; padding: 2px 12px 2px 0; white-space: normal; text-align: left; vertical-align: top; }
+    #flags td:nth-child(-n+3), #record td:nth-child(-n+3), #all td:nth-child(-n+2), #all td:nth-child(6) { display: block; }
+    td[data-l]::before { content: attr(data-l) ' '; color: var(--muted); font-size: 11px; }
+    td.na { display: none !important; }
+    section { padding: 4px 10px 2px; }
+    .tile .v { font-size: 20px; }
+    input[type=search] { min-width: 140px; flex: 1; }
+  }
 </style>
 </head>
 <body>
@@ -293,12 +309,12 @@ function renderFlags() {
       '<tr><td>' + kickoff(g.startTimestamp) + '<div class="dim">' + startsIn(g.startTimestamp) + '</div></td>' + matchCell(g)
       + '<td class="pick">' + pickLabel(g, o.name) + warnBadges(o)
       + (o.pinnacle ? '<div class="meta">Pinnacle ' + fmtPct(o.pinnacle.prob) + ' @ ' + fmtOdds(o.pinnacle.odds) + '</div>' : '') + '</td>'
-      + '<td class="num"><span class="ringed">' + fmtOdds(o.odds) + '</span> ' + driftCell(o) + '</td>'
-      + '<td class="num">' + fmtPct(o.marketProb) + '</td>'
-      + '<td class="num" title="Raw ' + fmtPct(o.voteShareRaw) + ' of ' + g.totalVotes.toLocaleString() + ' votes, debiased by fanbase">' + fmtPct(o.voteShare) + '</td>'
-      + '<td>' + formCell(g) + '</td>'
-      + '<td class="num">' + fmtPct(o.estProb) + '</td>'
-      + '<td class="num"><span class="badge">↑ +' + fmtPct(o.ev) + '</span></td></tr>'
+      + '<td class="num" data-l="bet365 odds"><span class="ringed">' + fmtOdds(o.odds) + '</span> ' + driftCell(o) + '</td>'
+      + '<td class="num" data-l="Market %">' + fmtPct(o.marketProb) + '</td>'
+      + '<td class="num" data-l="Crowd %" title="Raw ' + fmtPct(o.voteShareRaw) + ' of ' + g.totalVotes.toLocaleString() + ' votes, debiased by fanbase">' + fmtPct(o.voteShare) + '</td>'
+      + '<td data-l="Form">' + formCell(g) + '</td>'
+      + '<td class="num" data-l="Model %">' + fmtPct(o.estProb) + '</td>'
+      + '<td class="num" data-l="EV"><span class="badge">↑ +' + fmtPct(o.ev) + '</span></td></tr>'
     ).join('');
 }
 
@@ -309,10 +325,12 @@ function renderAll() {
   table.hidden = games.length === 0;
   // The model's pick = the outcome it gives the highest win probability.
   const lean = (g) => g.outcomes.reduce((best, o) => (o.estProb > best.estProb ? o : best));
+  const colLabel = { '1': 'Home (1)', X: 'Draw (X)', '2': 'Away (2)' };
   const oddsCell = (g, n) => {
     const o = g.outcomes.find(x => x.name === n);
-    if (!o) return '<td class="num">—</td>';
-    return '<td class="num">' + (o.flagged ? '<span class="ringed">' + fmtOdds(o.odds) + '</span>' : fmtOdds(o.odds)) + '</td>';
+    // Empty draw column collapses away on mobile via the .na class.
+    if (!o) return '<td class="num na" data-l="' + colLabel[n] + '">—</td>';
+    return '<td class="num" data-l="' + colLabel[n] + '">' + (o.flagged ? '<span class="ringed">' + fmtOdds(o.odds) + '</span>' : fmtOdds(o.odds)) + '</td>';
   };
   const leanCell = (g, leanOutcome) => {
     const flaggedPick = g.outcomes.find(o => o.flagged);
@@ -328,7 +346,7 @@ function renderAll() {
       return '<tr><td>' + kickoff(g.startTimestamp) + '</td>' + matchCell(g)
         + oddsCell(g, '1') + oddsCell(g, 'X') + oddsCell(g, '2')
         + leanCell(g, l)
-        + '<td>' + voteBar(g) + '</td><td>' + formCell(g) + '</td></tr>';
+        + '<td data-l="Crowd vote">' + voteBar(g) + '</td><td data-l="Form">' + formCell(g) + '</td></tr>';
     }).join('');
 }
 
@@ -368,11 +386,11 @@ function renderRecord() {
       + '<div class="meta">' + esc(sportLabel(p.sport)) + ' · ' + esc(p.tournament) + (p.finalScore ? ' · ' + esc(p.finalScore) : '') + '</div></td>'
       + '<td class="pick"><span class="sideDot ' + sideClass(p.outcome) + '"></span>' + esc(p.pickTeam)
       + '<span class="homeaway">(' + sideTag(p.outcome) + ')</span></td>'
-      + '<td class="num">' + fmtOdds(p.odds) + '</td>'
-      + '<td class="num">' + fmtOdds(p.closingOdds) + '</td>'
-      + '<td class="num">' + (p.clv == null ? '—' : (p.clv >= 0 ? '+' : '') + fmtPct(p.clv)) + '</td>'
-      + '<td class="res-' + p.result + '">' + p.result.toUpperCase() + '</td>'
-      + '<td class="num">' + (p.pnl >= 0 ? '+' : '') + p.pnl.toFixed(2) + 'u</td></tr>'
+      + '<td class="num" data-l="Taken">' + fmtOdds(p.odds) + '</td>'
+      + '<td class="num" data-l="Close">' + fmtOdds(p.closingOdds) + '</td>'
+      + '<td class="num" data-l="CLV">' + (p.clv == null ? '—' : (p.clv >= 0 ? '+' : '') + fmtPct(p.clv)) + '</td>'
+      + '<td class="res-' + p.result + '" data-l="Result">' + p.result.toUpperCase() + '</td>'
+      + '<td class="num" data-l="P/L">' + (p.pnl >= 0 ? '+' : '') + p.pnl.toFixed(2) + 'u</td></tr>'
     ).join('');
 }
 
