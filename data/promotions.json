@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-21T20:35:50.757Z",
+  "updatedAt": "2026-07-21T20:40:52.331Z",
   "rules": {
     "minSettled": 50,
     "promoteRoi": 0.02,
@@ -11,9 +11,9 @@
     "driftCrowd": {
       "status": "shadow",
       "label": "crowd-side drifted out",
-      "n": 14,
-      "roi": -0.1536,
-      "clv": -0.00165,
+      "n": 17,
+      "roi": -0.1124,
+      "clv": -0.00023,
       "since": "2026-07-21T10:32:01.751Z"
     },
     "consensus": {
@@ -27,9 +27,9 @@
     "bigDrift": {
       "status": "shadow",
       "label": "extreme drift ≥20%",
-      "n": 17,
-      "roi": -0.0588,
-      "clv": 0.07073,
+      "n": 19,
+      "roi": 0.13,
+      "clv": 0.06639,
       "since": "2026-07-21T10:40:44.579Z"
     },
     "voteSurge": {

@@ -307,6 +307,14 @@ function buildReport(data) {
     <div class="empty" id="flagsEmpty" hidden>No outcomes cleared the EV threshold this scan.</div>
   </section>
   <section>
+    <h2>Research candidates — signals firing now</h2>
+    <p class="note">Picks selected by the research signals, shown while they earn their live record. <b>Drift-crowd</b> is the only
+      component with positive large-sample evidence (frozen test: +16.8% ROI over 110 bets); the others are unvalidated. None of these
+      drive flags until the promotion gate clears them on live results.</p>
+    <div class="scroller"><table id="cands"></table></div>
+    <div class="empty" id="candsEmpty" hidden>No research signals firing in this window.</div>
+  </section>
+  <section>
     <h2>All scanned games</h2>
     <p class="note">Every game in the window with bet365-fed odds, nearest kickoff first.</p>
     <div class="scroller"><table id="all"></table></div>
@@ -638,7 +646,32 @@ function renderCalibration() {
     + '</td></tr>';
 }
 
-function render() { renderBlocks(); renderFlags(); renderAll(); }
+function renderCandidates() {
+  const rows = [];
+  for (const g of visibleGames()) {
+    for (const o of g.outcomes) {
+      if (o.candidateSignals && o.candidateSignals.length) rows.push({ g, o });
+    }
+  }
+  rows.sort((x, y) => x.g.startTimestamp - y.g.startTimestamp);
+  const table = document.getElementById('cands');
+  document.getElementById('candsEmpty').hidden = rows.length > 0;
+  table.hidden = rows.length === 0;
+  const rec = (k) => {
+    const s = DATA.shadows && DATA.shadows[k];
+    return s && s.n ? s.n + ' settled, roi ' + (s.roi >= 0 ? '+' : '') + (s.roi * 100).toFixed(0) + '%' : 'no record yet';
+  };
+  table.innerHTML = '<tr><th>Kickoff</th><th>Match</th><th>Pick</th><th class="num">odds</th><th>Signal</th><th>Signal live record</th></tr>'
+    + rows.map(({ g, o }) =>
+      '<tr><td>' + kickoff(g.startTimestamp) + '<div class="dim">' + startsIn(g.startTimestamp) + '</div></td>' + matchCell(g)
+      + '<td class="pick">' + pickLabel(g, o.name) + '</td>'
+      + '<td class="num" data-l="odds">' + fmtOdds(o.odds) + ' ' + driftCell(o) + '</td>'
+      + '<td data-l="Signal">' + o.candidateSignals.map(k => '<span class="sbadge">' + (SIGNAL_BADGE[k] || k) + '</span>').join(' ') + '</td>'
+      + '<td data-l="Record" class="dim">' + o.candidateSignals.map(rec).join(' · ') + '</td></tr>'
+    ).join('');
+}
+
+function render() { renderBlocks(); renderFlags(); renderCandidates(); renderAll(); }
 
 (function init() {
   const upcoming = DATA.games.filter(notStarted);

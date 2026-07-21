@@ -154,9 +154,13 @@ function applyPromotedSignals(analyzed, promotions, priorLast = new Map()) {
       if (o.voteShare === null) continue;
       const r = researchFields(game, o, priorLast.get(`${game.id}|${o.name}`));
       o.research = r;
-      const hits = Object.keys(SIGNALS).filter((key) => {
+      // Every signal that fires, regardless of promotion status — so the
+      // dashboard can show research candidates while they earn their record.
+      const firing = Object.keys(SIGNALS).filter((key) => SIGNALS[key].fires(o, r));
+      if (firing.length) o.candidateSignals = firing;
+      const hits = firing.filter((key) => {
         const p = promotions.signals[key];
-        return p && p.status === 'promoted' && SIGNALS[key].fires(o, r);
+        return p && p.status === 'promoted';
       });
       if (hits.length) {
         o.signals = hits;
