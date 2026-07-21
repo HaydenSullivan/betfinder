@@ -166,41 +166,88 @@ function buildReport(data) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BetFinder — value scan & record</title>
 <style>
+  /* Neutrals carry a cool bias toward the data hues — picked, not inherited.
+     Gold is reserved to mean "validated evidence"; blue/red stay strictly for
+     team identity (CVD-checked), green/red for settled results. */
   :root {
     color-scheme: light;
-    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e;
-    --muted: #898781; --grid: #e1e0d9; --border: rgba(11,11,11,0.10);
-    --home: #2a78d6; --draw: #c3c2b7; --away: #e34948;
-    --good: #0ca30c; --good-text: #006300; --warn: #ec835a; --loss: #d03b3b; --chip: #f0efec;
+    --page: #f2f4f7; --surface: #ffffff; --raise: #f7f9fb;
+    --ink: #10161d; --ink-2: #4a5563; --muted: #7b8794;
+    --grid: #e3e8ee; --border: #d8dee6;
+    --home: #2a78d6; --draw: #b9c2cd; --away: #e34948;
+    --gold: #9a6b13; --gold-bg: rgba(154,107,19,0.09);
+    --good: #1a7f37; --good-text: #146c2e; --warn: #b7791f; --loss: #cf222e; --chip: #eaeef3;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
-      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7;
-      --muted: #898781; --grid: #2c2c2a; --border: rgba(255,255,255,0.10);
-      --home: #3987e5; --draw: #383835; --away: #e66767;
-      --good: #0ca30c; --good-text: #0ca30c; --warn: #ec835a; --loss: #d03b3b; --chip: #262624;
+      --page: #0b0f14; --surface: #141a21; --raise: #1a222b;
+      --ink: #e6edf3; --ink-2: #9aa7b4; --muted: #6e7d8c;
+      --grid: #232c36; --border: #2a343f;
+      --home: #4b93e8; --draw: #37424e; --away: #e66767;
+      --gold: #d9a441; --gold-bg: rgba(217,164,65,0.10);
+      --good: #3fb950; --good-text: #3fb950; --warn: #d29922; --loss: #f85149; --chip: #1e2731;
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 60px; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: var(--ink-2); margin: 0 0 20px; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
-  .tile .v { font-size: 24px; font-weight: 650; }
-  .tile .l { color: var(--ink-2); font-size: 12px; margin-top: 2px; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  /* Every number is monospaced — the vernacular of an odds board, and it
+     aligns digits down a column for free. */
+  .num, td.num, .odds, .tile .v, .block .hd, .multi .mo, .multi li .lo, .drift, .bar + .dim {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 16px 16px 64px; }
+
+  /* Sticky header + tab bar: the page is operated, not read top-to-bottom. */
+  .topbar { position: sticky; top: 0; z-index: 20; background: var(--page); border-bottom: 1px solid var(--border); }
+  .topline { max-width: 1100px; margin: 0 auto; padding: 12px 16px 8px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .brand { font-size: 17px; font-weight: 680; letter-spacing: -0.01em; display: flex; align-items: center; gap: 7px; }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
+  .pulse.stale { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); }
+  .stamp { color: var(--muted); font-size: 12.5px; }
+  .tabs { max-width: 1100px; margin: 0 auto; padding: 0 8px; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    appearance: none; background: none; border: 0; border-bottom: 2px solid transparent;
+    color: var(--ink-2); font: inherit; font-size: 14px; font-weight: 560;
+    padding: 9px 12px 8px; cursor: pointer; white-space: nowrap;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.on { color: var(--ink); border-bottom-color: var(--gold); }
+  .tab:focus-visible { outline: 2px solid var(--home); outline-offset: -2px; border-radius: 4px; }
+  .panel { display: none; }
+  .panel.on { display: block; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(126px, 1fr)); gap: 8px; margin: 14px 0 18px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; }
+  .tile .v { font-size: 21px; font-weight: 660; letter-spacing: -0.02em; }
+  .tile .l { color: var(--muted); font-size: 11.5px; margin-top: 1px; line-height: 1.3; }
   .tile .v.pos { color: var(--good-text); } .tile .v.neg { color: var(--loss); }
-  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 14px; }
-  .chip { background: var(--chip); border: 1px solid var(--border); color: var(--ink-2); border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: 13px; }
-  .chip.on { background: var(--home); border-color: var(--home); color: #fff; }
-  input[type=search] { background: var(--surface); color: var(--ink); border: 1px solid var(--grid); border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 220px; }
-  .legend { display: flex; gap: 16px; color: var(--ink-2); font-size: 12px; margin: 0 0 10px; align-items: center; flex-wrap: wrap; }
-  .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; border: 1px solid var(--border); }
-  section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 6px 0 2px; margin-bottom: 22px; overflow: hidden; }
-  section h2 { font-size: 14px; margin: 10px 16px; }
-  section .note { color: var(--muted); font-size: 12px; margin: -6px 16px 10px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 0 0 14px; }
+  .chip { background: var(--chip); border: 1px solid var(--border); color: var(--ink-2); border-radius: 999px; padding: 5px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+  .chip:hover { color: var(--ink); }
+  .chip.on { background: var(--ink); border-color: var(--ink); color: var(--page); font-weight: 560; }
+  .chip:focus-visible, .disclose:focus-visible { outline: 2px solid var(--home); outline-offset: 1px; }
+  input[type=search] { background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 999px; padding: 6px 13px; font: inherit; font-size: 13px; min-width: 190px; flex: 1; }
+  .legend { display: flex; gap: 14px; color: var(--muted); font-size: 12px; margin: 4px 2px 0; align-items: center; flex-wrap: wrap; }
+  .legend .sw { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 4px 0 2px; margin-bottom: 16px; overflow: hidden; }
+  /* Evidence tiers are the page's core visual language. */
+  section.tierA { border-left: 3px solid var(--gold); }
+  section.tierC { opacity: 0.86; }
+  .shead { display: flex; align-items: center; gap: 9px; padding: 12px 15px 0; flex-wrap: wrap; }
+  .sh { font-size: 14.5px; font-weight: 640; margin: 0; letter-spacing: -0.01em; }
+  .tier { font-size: 10.5px; font-weight: 640; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 5px; }
+  .tier.tierA { color: var(--gold); background: var(--gold-bg); }
+  .tier.tierC { color: var(--muted); background: var(--chip); }
+  .disclose { margin-left: auto; appearance: none; background: var(--chip); border: 1px solid var(--border); color: var(--ink-2); border-radius: 999px; padding: 3px 11px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .disclose.wide { display: block; margin: 2px 15px 12px; width: calc(100% - 30px); padding: 9px; }
+  section .note { color: var(--muted); font-size: 12.5px; line-height: 1.5; margin: 7px 15px 12px; }
+  .warnNote { border: 1px solid var(--warn); color: var(--warn); border-radius: 8px; padding: 9px 12px; }
   .scroller { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; min-width: 980px; }
   th, td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--grid); white-space: nowrap; }
@@ -227,23 +274,24 @@ function buildReport(data) {
   .sideDot.h { background: var(--home); } .sideDot.d { background: var(--draw); } .sideDot.a { background: var(--away); }
   .homeaway { color: var(--ink-2); font-size: 11px; font-weight: 400; margin-left: 5px; }
   .ringed { outline: 1.5px solid var(--good); border-radius: 6px; padding: 1px 5px; }
-  .empty { padding: 18px 16px; color: var(--ink-2); }
-  .staleWarn { border: 1px solid var(--warn); color: var(--warn); border-radius: 8px; padding: 8px 12px; margin: 0 0 16px; font-size: 13px; }
-  #blocksWrap { margin: 0 0 22px; }
-  .blocksH2 { font-size: 15px; margin: 8px 2px 2px; }
-  .blocksNote { margin: 0 2px 10px !important; }
+  .empty { padding: 16px 15px; color: var(--muted); font-size: 13px; }
+  .staleWarn { border: 1px solid var(--warn); color: var(--warn); border-radius: 8px; padding: 9px 12px; margin: 0 0 14px; font-size: 13px; }
+  #blocksWrap { margin: 0 0 20px; }
+  #blocksTitle { font-size: 14.5px; font-weight: 640; margin: 0 2px 3px; }
+  #blocksNote { color: var(--muted); font-size: 12.5px; margin: 0 2px 11px; }
   .blocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-  .block { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
-  .block.best { border-color: var(--good); }
-  .block .hd { font-size: 11px; color: var(--muted); margin-bottom: 6px; font-variant-numeric: tabular-nums; }
-  .block .pk { font-weight: 600; line-height: 1.5; }
-  .block.none { opacity: 0.55; }
+  .block { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 10px; padding: 10px 13px; }
+  .block.validated { border-left-color: var(--gold); }
+  .block .hd { font-size: 10.5px; color: var(--muted); margin-bottom: 7px; letter-spacing: 0.01em; }
+  .block .pk { font-weight: 620; line-height: 1.6; }
+  .block .meta { margin-top: 2px; }
+  .block.none { opacity: 0.5; }
   .bestmark { color: var(--good-text); font-size: 11px; font-weight: 650; margin-left: 4px; white-space: nowrap; }
-  .multiControls { margin: 0 16px 12px; }
-  .multiFoot { margin: 12px 16px 10px !important; }
-  .multis { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; padding: 0 16px 14px; }
-  .multi { border: 1px solid var(--grid); border-radius: 10px; padding: 10px 12px; }
-  .multi.top { border-color: var(--good); }
+  .multiControls { margin: 0 15px 12px; }
+  .multiFoot { margin: 10px 15px 12px !important; }
+  .multis { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; padding: 0 15px 12px; }
+  .multi { border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; background: var(--raise); }
+  .multi.top { border-color: var(--gold); }
   .multi .mh { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 2px; }
   .multi .mo { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
   .multi .ms { color: var(--ink-2); font-size: 12px; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
@@ -255,16 +303,21 @@ function buildReport(data) {
   .chart { padding: 4px 16px 12px; }
   .chart svg { width: 100%; height: 150px; display: block; }
   footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
-  /* Mobile: the three main tables become stacked cards, no sideways scrolling */
+  /* Mobile: every table becomes stacked cards; nothing scrolls sideways. */
   @media (max-width: 760px) {
-    .wrap { padding: 14px 10px 40px; }
+    .wrap { padding: 12px 11px 48px; }
+    .topline { padding: 10px 12px 7px; }
+    .tiles { grid-template-columns: repeat(2, 1fr); gap: 7px; }
+    .tile .v { font-size: 19px; }
     table { min-width: 0; }
     .scroller { overflow-x: visible; }
-    #flags, #all, #record { display: block; }
-    #flags tr:first-child, #all tr:first-child, #record tr:first-child { display: none; }
-    #flags tr, #all tr, #record tr { display: block; border: 1px solid var(--grid); border-radius: 10px; margin: 10px 0; padding: 8px 12px; }
-    #flags td, #all td, #record td { display: inline-block; border: none; padding: 2px 12px 2px 0; white-space: normal; text-align: left; vertical-align: top; }
-    #flags td:nth-child(-n+3), #record td:nth-child(-n+3), #all td:nth-child(-n+2), #all td:nth-child(6) { display: block; }
+    .multis { grid-template-columns: 1fr; padding: 0 12px 10px; }
+    #flags, #all, #record, #cands { display: block; }
+    #flags tr:first-child, #all tr:first-child, #record tr:first-child, #cands tr:first-child { display: none; }
+    #flags tr, #all tr, #record tr, #cands tr { display: block; border: 1px solid var(--border); border-radius: 10px; margin: 9px 12px; padding: 9px 12px; background: var(--raise); }
+    #flags td, #all td, #record td, #cands td { display: inline-block; border: none; padding: 2px 11px 2px 0; white-space: normal; text-align: left; vertical-align: top; }
+    #flags td:nth-child(-n+3), #record td:nth-child(-n+3), #all td:nth-child(-n+2), #all td:nth-child(6),
+    #cands td:nth-child(-n+3) { display: block; }
     td[data-l]::before { content: attr(data-l) ' '; color: var(--muted); font-size: 11px; }
     td.na { display: none !important; }
     section { padding: 4px 10px 2px; }
@@ -274,72 +327,106 @@ function buildReport(data) {
 </style>
 </head>
 <body>
+<header class="topbar">
+  <div class="topline">
+    <div class="brand">BetFinder<span class="pulse" id="pulse"></span></div>
+    <div class="stamp" id="sub"></div>
+  </div>
+  <nav class="tabs" id="tabs" role="tablist">
+    <button class="tab on" role="tab" data-tab="now">Now</button>
+    <button class="tab" role="tab" data-tab="multis">Multis</button>
+    <button class="tab" role="tab" data-tab="games">Games</button>
+    <button class="tab" role="tab" data-tab="record">Record</button>
+  </nav>
+</header>
 <div class="wrap">
-  <h1>BetFinder</h1>
-  <p class="sub" id="sub"></p>
   <div class="tiles" id="tiles"></div>
-  <div class="controls" id="controls"></div>
-  <div class="legend">
-    <span><span class="sw" style="background:var(--home)"></span>Home / player 1</span>
-    <span><span class="sw" style="background:var(--draw)"></span>Draw</span>
-    <span><span class="sw" style="background:var(--away)"></span>Away / player 2</span>
-    <span class="dim">Form reads newest → oldest · ★ = quality-adjusted 0–100 (win margins + opponent rank)</span>
+
+  <div class="panel on" id="panel-now">
+    <div class="controls" id="controls"></div>
+    <div id="blocksWrap" hidden>
+      <h2 class="sh" id="blocksTitle">Best pick per 3-hour window</h2>
+      <p class="note" id="blocksNote">Best available pick per window. Gold = validated signal; plain = unvalidated.</p>
+      <div class="blocks" id="blocks"></div>
+    </div>
+    <section class="tierA">
+      <div class="shead">
+        <h2 class="sh">Research candidates</h2>
+        <span class="tier tierA">best evidence</span>
+      </div>
+      <p class="note"><b>Drift-crowd</b> is the only component with positive out-of-sample evidence —
+        <b>+22.3% ROI over 94 frozen-test bets</b>. Big-drift and consensus are unvalidated. None drive flags until the
+        promotion gate clears them on live results.</p>
+      <div class="scroller"><table id="cands"></table></div>
+      <button class="disclose wide" id="candsMore" hidden></button>
+      <div class="empty" id="candsEmpty" hidden>No research signals firing in this window.</div>
+    </section>
+    <section class="tierC" id="flagsSec">
+      <div class="shead">
+        <h2 class="sh">Model flags</h2>
+        <span class="tier tierC">unproven</span>
+        <button class="disclose" id="flagsToggle" aria-expanded="false">show</button>
+      </div>
+      <div id="flagsBody" hidden>
+        <p class="note warnNote">⚠ <b>Negative expectancy in backtest.</b> Across 9,381 games (train + frozen test, at opening and
+          closing prices) the core vote-EV model returned <b>negative</b> ROI. The earlier positive result came from a 27-bet sample
+          and did not survive. Shown for research continuity only.</p>
+        <div class="scroller"><table id="flags"></table></div>
+        <div class="empty" id="flagsEmpty" hidden>No outcomes cleared the EV threshold this scan.</div>
+      </div>
+    </section>
   </div>
-  <div id="blocksWrap" hidden>
-    <h2 class="blocksH2" id="blocksTitle">Best pick per 3-hour window</h2>
-    <p class="note blocksNote">The best available pick in each upcoming 3-hour block across the next 24 h. Green = a promoted flag;
-      otherwise the top research candidate, preferring drift-crowd (the one signal with positive out-of-sample evidence). Respects the sport filter &amp; search.</p>
-    <div class="blocks" id="blocks"></div>
+
+  <div class="panel" id="panel-multis">
+    <section id="multiSec" hidden>
+      <div class="shead"><h2 class="sh" id="multiH2">Multibets</h2></div>
+      <p class="note" id="multiNote"></p>
+      <div class="controls multiControls" id="multiControls"></div>
+      <div class="multis" id="multis"></div>
+      <button class="disclose wide" id="multiMore" hidden></button>
+      <p class="note multiFoot" id="multiFoot"></p>
+    </section>
+    <div class="empty" id="multiEmpty">No multibets available for this window.</div>
   </div>
-  <section id="multiSec" hidden>
-    <h2 id="multiH2">Multibets</h2>
-    <p class="note" id="multiNote"></p>
-    <div class="controls multiControls" id="multiControls"></div>
-    <div class="multis" id="multis"></div>
-    <p class="note multiFoot" id="multiFoot"></p>
-  </section>
-  <section>
-    <h2>Research candidates — best available evidence</h2>
-    <p class="note">Picks selected by the research signals. <b>Drift-crowd</b> is the only component with positive out-of-sample evidence
-      (frozen test: <b>+22.3% ROI over 94 bets</b>, after restricting it to sports where the crowd carries information); big-drift and
-      consensus are unvalidated. None drive flags until the promotion gate clears them on live results — but on current evidence these
-      rank above the model flags below.</p>
-    <div class="scroller"><table id="cands"></table></div>
-    <div class="empty" id="candsEmpty" hidden>No research signals firing in this window.</div>
-  </section>
-  <section>
-    <h2>Model flags — unproven</h2>
-    <p class="note staleWarn" style="margin:0 16px 10px">⚠ <b>Negative expectancy in backtest.</b> On 9,381 games (train + frozen test, at both opening and
-      closing prices) the core vote-EV model returned <b>negative</b> ROI. The earlier positive result came from a 27-bet sample and did not
-      survive the larger one. Shown for research continuity only — see data/research/finding-2026-07-22-core-model.json.</p>
-    <div class="scroller"><table id="flags"></table></div>
-    <div class="empty" id="flagsEmpty" hidden>No outcomes cleared the EV threshold this scan.</div>
-  </section>
-  <section>
-    <h2>All scanned games</h2>
-    <p class="note">Every game in the window with bet365-fed odds, nearest kickoff first.</p>
-    <div class="scroller"><table id="all"></table></div>
-    <div class="empty" id="allEmpty" hidden>No games with odds in the current window.</div>
-  </section>
-  <section>
-    <h2>Track record — settled picks</h2>
-    <p class="note">Flat 1-unit stake at the first flagged price. CLV = price taken vs closing price; consistently positive CLV means the signal beats the market.</p>
-    <div class="chart" id="chart" hidden></div>
-    <div class="scroller"><table id="attr" hidden></table></div>
-    <div class="scroller"><table id="record"></table></div>
-    <div class="empty" id="recordEmpty" hidden>No settled predictions yet — the record builds automatically as flagged games finish.</div>
-  </section>
-  <section>
-    <h2>Model calibration</h2>
-    <p class="note">All settled predictions (flagged or not), grouped by the model's estimated win probability. Well-calibrated = predicted ≈ actual.</p>
-    <div class="scroller"><table id="calib"></table></div>
-    <div class="empty" id="calibEmpty" hidden>Calibration appears after enough games settle. Vote weight in use: <span id="vw"></span>.</div>
-  </section>
+
+  <div class="panel" id="panel-games">
+    <div class="controls" id="controls2"></div>
+    <section>
+      <div class="shead"><h2 class="sh">All scanned games</h2></div>
+      <p class="note">Every game in the window with bet365-fed odds, nearest kickoff first.</p>
+      <div class="scroller"><table id="all"></table></div>
+      <div class="empty" id="allEmpty" hidden>No games with odds in the current window.</div>
+    </section>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--home)"></span>Home / player 1</span>
+      <span><span class="sw" style="background:var(--draw)"></span>Draw</span>
+      <span><span class="sw" style="background:var(--away)"></span>Away / player 2</span>
+      <span class="dim">Form: newest → oldest · ★ = quality-adjusted 0–100</span>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-record">
+    <section>
+      <div class="shead"><h2 class="sh">Track record</h2></div>
+      <p class="note">Flat 1-unit stakes at the first flagged price. CLV is the price taken versus the closing price — the gauge that
+        says whether we beat the market.</p>
+      <div class="chart" id="chart" hidden></div>
+      <div class="scroller"><table id="attr" hidden></table></div>
+      <div class="scroller"><table id="record"></table></div>
+      <div class="empty" id="recordEmpty" hidden>No settled predictions yet — the record builds as flagged games finish.</div>
+    </section>
+    <section>
+      <div class="shead"><h2 class="sh">Calibration &amp; signals</h2></div>
+      <p class="note">Every settled prediction grouped by the model's estimated win probability. Well calibrated = predicted ≈ actual.</p>
+      <div class="scroller"><table id="calib"></table></div>
+      <div class="empty" id="calibEmpty" hidden>Calibration appears once enough games settle. Vote weight in use: <span id="vw"></span>.</div>
+    </section>
+  </div>
+
   <footer>
-    Odds are bet365 prices via Sofascore's feed and can lag the live bet365 site by minutes.
-    Crowd votes are debiased by fanbase size and shrunk toward the de-vigged market probability; recent form nudges the
-    estimate; drift against the pick and confirmed absences reduce the edge. The vote weight is re-fitted from settled
-    results as history accumulates. Screening tool, not betting advice.
+    Odds are bet365 prices via Sofascore's feed and can lag the live site by minutes. Crowd votes are debiased by fanbase size and
+    shrunk toward the de-vigged market price; form nudges the estimate; drift and confirmed absences reduce it. Weights re-fit from
+    settled results. Screening tool, not betting advice.
   </footer>
 </div>
 <script>
@@ -471,7 +558,9 @@ function renderBlocks() {
       const tag = kind === 'flag'
         ? '<span class="badge">↑ +' + fmtPct(best.o.ev) + '</span>'
         : best.o.candidateSignals.map(k => '<span class="sbadge">' + (SIGNAL_BADGE[k] || k) + '</span>').join(' ');
-      cards.push('<div class="block ' + (kind === 'flag' ? 'best' : '') + '"><div class="hd">' + label + '</div>'
+      // Gold marks the one signal with out-of-sample evidence behind it.
+      const validated = kind === 'candidate' && best.o.candidateSignals.includes('driftCrowd');
+      cards.push('<div class="block ' + (validated ? 'validated' : '') + '"><div class="hd">' + label + '</div>'
         + '<div class="pk">' + pickLabel(best.g, best.o.name) + ' ' + tag + '</div>'
         + '<div class="meta">@ ' + fmtOdds(best.o.odds) + ' · ' + esc(sportLabel(best.g.sport)) + ' · ' + startsIn(best.g.startTimestamp) + '</div>'
         + '<div class="meta"><a href="' + esc(best.g.url) + '" target="_blank" rel="noopener">' + esc(best.g.home) + ' v ' + esc(best.g.away) + '</a></div></div>');
@@ -485,10 +574,13 @@ function renderBlocks() {
 }
 // Multibets are built server-side (leg pool → pruned combination search); the page
 // only re-sorts them and drops any whose legs have kicked off since the scan.
-let multiWindow = 0, multiSort = 'prob';
+let multiWindow = 0, multiSort = 'prob', multiExpanded = false;
+const MULTI_PREVIEW = 3;
 function renderMultis() {
   const sec = document.getElementById('multiSec');
-  if (!DATA.multis) { sec.hidden = true; return; }
+  const emptyEl = document.getElementById('multiEmpty');
+  if (!DATA.multis) { sec.hidden = true; if (emptyEl) emptyEl.hidden = false; return; }
+  if (emptyEl) emptyEl.hidden = true;
   const win = DATA.multis.windows[multiWindow];
   const live = win.multis.filter(m => m.firstStart > NOW() - 300);
   live.sort((a, b) => multiSort === 'ev' ? b.ev - a.ev || b.prob - a.prob : b.prob - a.prob || b.ev - a.ev);
@@ -506,11 +598,22 @@ function renderMultis() {
     ? win.poolSize + ' qualifying legs · ' + (win.candidates || 0).toLocaleString() + ' combinations searched'
     : '';
   const wrap = document.getElementById('multis');
+  const moreBtn = document.getElementById('multiMore');
   if (!live.length) {
-    wrap.innerHTML = '<div class="dim">Every multi in this window has a leg that already kicked off — run a fresh scan.</div>';
+    wrap.innerHTML = '<div class="empty">Every multi in this window has a leg that already kicked off — run a fresh scan.</div>';
+    if (moreBtn) moreBtn.hidden = true;
     return;
   }
-  wrap.innerHTML = live.map((m, i) =>
+  // Only a few multis are shown up front: each card is tall, and ten of them
+  // buried the rest of the page on a phone.
+  const shown = multiExpanded ? live : live.slice(0, MULTI_PREVIEW);
+  if (moreBtn) {
+    moreBtn.hidden = live.length <= MULTI_PREVIEW;
+    moreBtn.textContent = multiExpanded
+      ? 'Show fewer'
+      : 'Show all ' + live.length + ' multis';
+  }
+  wrap.innerHTML = shown.map((m, i) =>
     '<div class="multi' + (i === 0 ? ' top' : '') + '">'
     + '<div class="mh"><span class="mo">$' + m.odds.toFixed(2) + '</span>'
     + '<span class="dim">' + m.legCount + ' legs</span>'
@@ -529,6 +632,10 @@ function renderMultis() {
       + '</li>').join('')
     + '</ol></div>'
   ).join('');
+  if (moreBtn && !moreBtn.dataset.bound) {
+    moreBtn.dataset.bound = '1';
+    moreBtn.addEventListener('click', () => { multiExpanded = !multiExpanded; renderMultis(); });
+  }
 }
 function matchCell(g) {
   return '<td><div class="teams"><a href="' + esc(g.url) + '" target="_blank" rel="noopener">' + esc(g.home) + ' v ' + esc(g.away) + '</a></div>'
@@ -673,17 +780,30 @@ function renderCalibration() {
     + '</td></tr>';
 }
 
+let candsExpanded = false;
+const CANDS_PREVIEW = 8;
 function renderCandidates() {
-  const rows = [];
+  const all = [];
   for (const g of visibleGames()) {
     for (const o of g.outcomes) {
-      if (o.candidateSignals && o.candidateSignals.length) rows.push({ g, o });
+      if (o.candidateSignals && o.candidateSignals.length) all.push({ g, o });
     }
   }
-  rows.sort((x, y) => x.g.startTimestamp - y.g.startTimestamp);
+  // Validated signal first, then soonest kickoff — the order you'd act in.
+  all.sort((x, y) => candRank(x.o) - candRank(y.o) || x.g.startTimestamp - y.g.startTimestamp);
+  const rows = candsExpanded ? all : all.slice(0, CANDS_PREVIEW);
   const table = document.getElementById('cands');
-  document.getElementById('candsEmpty').hidden = rows.length > 0;
-  table.hidden = rows.length === 0;
+  document.getElementById('candsEmpty').hidden = all.length > 0;
+  table.hidden = all.length === 0;
+  const moreBtn = document.getElementById('candsMore');
+  if (moreBtn) {
+    moreBtn.hidden = all.length <= CANDS_PREVIEW;
+    moreBtn.textContent = candsExpanded ? 'Show fewer' : 'Show all ' + all.length + ' candidates';
+    if (!moreBtn.dataset.bound) {
+      moreBtn.dataset.bound = '1';
+      moreBtn.addEventListener('click', () => { candsExpanded = !candsExpanded; renderCandidates(); });
+    }
+  }
   const rec = (k) => {
     const s = DATA.shadows && DATA.shadows[k];
     return s && s.n ? s.n + ' settled, roi ' + (s.roi >= 0 ? '+' : '') + (s.roi * 100).toFixed(0) + '%' : 'no record yet';
@@ -708,16 +828,43 @@ function render() { renderBlocks(); renderFlags(); renderCandidates(); renderAll
   const started = DATA.games.length - upcoming.length;
   const ageHours = (Date.now() - Date.parse(DATA.generatedAt)) / 3.6e6;
   if (ageHours > 2.5) {
+    document.getElementById('pulse').classList.add('stale');
     const stale = document.createElement('div');
     stale.className = 'staleWarn';
-    stale.textContent = '⚠ Last scan was ' + ageHours.toFixed(1) + ' h ago (laptop asleep?). '
+    stale.textContent = 'Last scan was ' + ageHours.toFixed(1) + ' h ago — the laptop was probably asleep. '
       + (started ? started + ' game(s) that have since kicked off are hidden. ' : '')
-      + 'A fresh scan starts automatically within minutes of the laptop waking.';
-    document.getElementById('sub').after(stale);
+      + 'A fresh scan starts within minutes of it waking.';
+    document.querySelector('.wrap').prepend(stale);
   }
   const r = DATA.record;
   document.getElementById('sub').textContent =
-    'Updated ' + new Date(DATA.generatedAt).toLocaleString() + ' · scanning ' + DATA.windowHours + ' h ahead · odds: bet365 via Sofascore · auto-refreshes every 2 h';
+    new Date(DATA.generatedAt).toLocaleString([], { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' })
+    + ' · ' + DATA.windowHours + ' h ahead · refreshes every 2 h';
+
+  // Tabs. The filter controls follow the user between Now and Games so the
+  // same sport/search selection applies to both.
+  const tabsEl = document.getElementById('tabs');
+  tabsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.tab');
+    if (!btn) return;
+    const name = btn.dataset.tab;
+    tabsEl.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t === btn));
+    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'panel-' + name));
+    if (name === 'now' || name === 'games') {
+      document.getElementById('panel-' + name).prepend(document.getElementById('controls'));
+    }
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  });
+
+  // Unproven flags stay collapsed — present for continuity, not for betting.
+  const ft = document.getElementById('flagsToggle');
+  ft.addEventListener('click', () => {
+    const body = document.getElementById('flagsBody');
+    const open = body.hidden;
+    body.hidden = !open;
+    ft.textContent = open ? 'hide' : 'show';
+    ft.setAttribute('aria-expanded', String(open));
+  });
   const tiles = [
     [String(hotFlagged), 'flagged next ' + (DATA.config.hotWindowHours || 3) + ' h', ''],
     [String(flaggedCount), 'flagged in next ' + DATA.windowHours + ' h', ''],
