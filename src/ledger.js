@@ -72,8 +72,25 @@ function firstFlaggedSnapshots(entries) {
   return [...byKey.values()];
 }
 
+// Drop snapshots identical to the newest prior one for the same outcome — they
+// carry no trajectory information and bloat the monthly files.
+function dedupeAgainst(prior, entries) {
+  const last = new Map();
+  for (const e of prior) {
+    const k = outcomeKey(e);
+    const p = last.get(k);
+    if (!p || e.scanAt > p.scanAt) last.set(k, e);
+  }
+  return entries.filter((e) => {
+    const p = last.get(outcomeKey(e));
+    if (!p || p.settled) return true;
+    return !(p.odds === e.odds && p.totalVotes === e.totalVotes && p.flagged === e.flagged);
+  });
+}
+
 module.exports = {
   DATA_DIR,
+  dedupeAgainst,
   ledgerFile,
   listLedgerFiles,
   readEntries,

@@ -3,6 +3,7 @@
   "hotWindowHours": 3,
   "sports": ["football", "tennis", "basketball", "baseball", "volleyball", "handball", "esports", "rugby", "aussie-rules", "ice-hockey", "american-football"],
   "oddsProviderId": 1,
+  "consensusProviderId": 5,
   "voteWeight": 0.35,
   "voteWeightPriors": {
     "football": 0.5,
@@ -31,6 +32,25 @@
   "lineupPenalty": 0.03,
   "calibrationMinSamplesGlobal": 80,
   "calibrationMinSamplesSport": 200,
+  "multi": {
+    "enabled": true,
+    "windows": [12, 24],
+    "minOdds": 10,
+    "maxOdds": 20,
+    "minLegs": 4,
+    "maxLegs": 6,
+    "minLegProb": 0.5,
+    "minLegOdds": 1.2,
+    "maxLegOdds": 4,
+    "minLegEv": -0.02,
+    "minLegVotes": 300,
+    "includeDraws": false,
+    "maxPerTournament": 2,
+    "poolSize": 40,
+    "shrinkToMarket": 0.25,
+    "count": 6,
+    "maxSharedLegs": 2
+  },
   "concurrency": 6,
   "requestDelayMs": 60,
   "chromePath": ""

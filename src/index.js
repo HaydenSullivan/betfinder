@@ -8,7 +8,8 @@ const path = require('path');
 const { execFile } = require('child_process');
 const { BrowserClient } = require('./browserClient');
 const sofa = require('./sofascore');
-const { analyzeAll } = require('./analyzer');
+const { analyzeAll, powerDeVig } = require('./analyzer');
+const { buildMultis } = require('./multi');
 const { buildReport, prepareReportData } = require('./report');
 const ledger = require('./ledger');
 const { settle } = require('./settle');
@@ -62,7 +63,9 @@ async function collectGames(client, config, windowHours) {
   const cache = new sofa.EventCache(path.join(ROOT, '.cache'), today);
 
   // 1) Bulk odds per sport (today + tomorrow, since the window can cross midnight).
+  // A second bookmaker's prices feed the consensus-outlier research signal.
   const marketsByEvent = new Map();
+  const consensusByEvent = new Map();
   for (const sport of config.sports) {
     for (const date of [today, tomorrow]) {
       try {
@@ -74,9 +77,18 @@ async function collectGames(client, config, windowHours) {
       } catch (e) {
         log(`  warning: bulk odds failed for ${sport} ${sofa.dateKey(date)}: ${e.message}`);
       }
+      if (config.consensusProviderId) {
+        try {
+          const odds = await sofa.fetchBulkOdds(client, sport, date, config.consensusProviderId);
+          for (const [eventId, rawMarket] of Object.entries(odds)) {
+            const market = sofa.parseMarket(rawMarket);
+            if (market) consensusByEvent.set(Number(eventId), market);
+          }
+        } catch {}
+      }
     }
   }
-  log(`  events with odds: ${marketsByEvent.size}`);
+  log(`  events with odds: ${marketsByEvent.size} (2nd book: ${consensusByEvent.size})`);
 
   // 2) Event details (cached per day on disk) for kickoff times and teams.
   const allIds = [...marketsByEvent.keys()];
@@ -104,7 +116,7 @@ async function collectGames(client, config, windowHours) {
     if (!event) continue;
     if (event.statusType !== 'notstarted') continue;
     if (event.startTimestamp < now - 300 || event.startTimestamp > windowEnd) continue;
-    inWindow.push({ ...event, url: sofa.matchUrl(event), market: marketsByEvent.get(id) });
+    inWindow.push({ ...event, url: sofa.matchUrl(event), market: marketsByEvent.get(id), b5: consensusByEvent.get(id) || null });
   }
   log(`  games in the next ${windowHours} h: ${inWindow.length}`);
 
@@ -124,6 +136,32 @@ async function collectGames(client, config, windowHours) {
     }
   }
   return inWindow;
+}
+
+// Log-only research fields for the shadow-signal program: stored on every
+// entry so settled results score each signal live before any promotion.
+function researchFields(game, o) {
+  const drift = o.openingOdds ? Number(((o.odds - o.openingOdds) / o.openingOdds).toFixed(4)) : null;
+  let b5Odds = null;
+  let consensusEv = null;
+  if (game.b5) {
+    const match = game.b5.outcomes.find((x) => x.name === o.name);
+    if (match) {
+      b5Odds = match.odds;
+      const priced = powerDeVig(game.b5.outcomes).find((x) => x.name === o.name);
+      if (priced) consensusEv = Number((priced.marketProb * o.odds - 1).toFixed(4));
+    }
+  }
+  const counts = game.votes ? game.votes.counts : null;
+  const crowdMajority = counts ? ((counts['1'] || 0) > (counts['2'] || 0) ? '1' : '2') === o.name : false;
+  return {
+    drift,
+    b5Odds,
+    consensusEv,
+    crowdMajority,
+    // H2 (validated out-of-sample): crowd-majority side whose price drifted out >=5%
+    shadowDriftCrowd: Boolean(crowdMajority && drift !== null && drift >= 0.05 && game.totalVotes >= 100),
+  };
 }
 
 function toLedgerEntries(analyzed, scanAt) {
@@ -155,6 +193,7 @@ function toLedgerEntries(analyzed, scanAt) {
         penalty: o.penalty,
         warnings: o.warnings,
         flagged: o.flagged,
+        ...researchFields(game, o),
         url: game.url,
         settled: false,
       });
@@ -172,6 +211,7 @@ async function main() {
 
   let analyzed;
   let calibration = null;
+  let priorEntries = [];
   if (args.mock) {
     const games = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'games.json'), 'utf8'));
     log(`mock mode: ${games.length} fixture games`);
@@ -187,7 +227,8 @@ async function main() {
     log(`  using ${executablePath} via ${base}`);
     try {
       await settle(client, log);
-      calibration = calibrate(ledger.loadAllEntries(), config, log);
+      priorEntries = ledger.loadAllEntries();
+      calibration = calibrate(priorEntries, config, log);
       const games = await collectGames(client, config, windowHours);
       analyzed = analyzeAll(games, config, calibration);
 
@@ -220,12 +261,18 @@ async function main() {
     await sharpCheck(analyzed, process.env.ODDS_API_KEY, log);
   }
   if (!args.mock) {
-    ledger.appendEntries(toLedgerEntries(analyzed, scanAt));
+    const fresh = toLedgerEntries(analyzed, scanAt);
+    const deduped = ledger.dedupeAgainst(priorEntries, fresh);
+    ledger.appendEntries(deduped);
+    log(`  ledger: ${deduped.length}/${fresh.length} snapshot(s) carried new information`);
   }
+
+  const multis = buildMultis(analyzed, config);
 
   const reportData = prepareReportData({
     generatedAt: scanAt,
     windowHours,
+    multis,
     config: {
       minVotes: config.minVotes,
       evThreshold: config.evThreshold,
@@ -247,6 +294,16 @@ async function main() {
       const pick = o.name === '1' ? game.home : o.name === '2' ? game.away : 'Draw';
       const warn = o.warnings.length ? `  [${o.warnings.join(', ')}]` : '';
       log(`  +${(o.ev * 100).toFixed(1)}%  ${pick} @ ${o.odds.toFixed(2)}  (${game.home} v ${game.away}, ${game.tournament})${warn}`);
+    }
+  }
+
+  if (multis) {
+    for (const w of multis.windows) {
+      const best = w.multis[0];
+      log(`\nbest ${w.hours} h multi — ${best.legCount} legs @ ${best.odds.toFixed(2)}  (${(best.prob * 100).toFixed(1)}% likely, EV ${best.ev >= 0 ? '+' : ''}${(best.ev * 100).toFixed(0)}%)`);
+      for (const leg of best.legs) {
+        log(`  ${leg.pick} @ ${leg.odds.toFixed(2)}  (${leg.home} v ${leg.away})`);
+      }
     }
   }
 

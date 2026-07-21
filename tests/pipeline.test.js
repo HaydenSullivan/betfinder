@@ -2,7 +2,26 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { resultForOutcome } = require('../src/settle');
 const { fitWeight, effectiveVoteWeight } = require('../src/calibrate');
-const { lastSnapshots, firstFlaggedSnapshots } = require('../src/ledger');
+const { lastSnapshots, firstFlaggedSnapshots, dedupeAgainst } = require('../src/ledger');
+
+test('dedupe drops unchanged snapshots but keeps movement and new outcomes', () => {
+  const prior = [
+    { eventId: 1, outcome: '1', scanAt: '2026-07-21T00:00:00Z', odds: 2.0, totalVotes: 500, flagged: false, settled: false },
+    { eventId: 2, outcome: '1', scanAt: '2026-07-21T00:00:00Z', odds: 1.8, totalVotes: 900, flagged: false, settled: true },
+  ];
+  const fresh = [
+    { eventId: 1, outcome: '1', scanAt: '2026-07-21T02:00:00Z', odds: 2.0, totalVotes: 500, flagged: false }, // unchanged -> drop
+    { eventId: 1, outcome: '2', scanAt: '2026-07-21T02:00:00Z', odds: 1.9, totalVotes: 500, flagged: false }, // new outcome -> keep
+    { eventId: 2, outcome: '1', scanAt: '2026-07-21T02:00:00Z', odds: 1.8, totalVotes: 900, flagged: false }, // prior settled -> keep
+    { eventId: 3, outcome: '1', scanAt: '2026-07-21T02:00:00Z', odds: 2.4, totalVotes: 100, flagged: false }, // brand new -> keep
+  ];
+  const kept = dedupeAgainst(prior, fresh);
+  assert.strictEqual(kept.length, 3);
+  assert.ok(!kept.some((e) => e.eventId === 1 && e.outcome === '1'));
+  // a price move on event 1 outcome 1 is kept
+  const moved = dedupeAgainst(prior, [{ eventId: 1, outcome: '1', scanAt: '2026-07-21T02:00:00Z', odds: 2.1, totalVotes: 500, flagged: false }]);
+  assert.strictEqual(moved.length, 1);
+});
 
 test('settlement maps winnerCode to outcome results', () => {
   assert.strictEqual(resultForOutcome('1', 1), 'won');

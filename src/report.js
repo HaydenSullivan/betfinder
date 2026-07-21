@@ -16,7 +16,7 @@ const SPORT_LABELS = {
 };
 
 // Assemble everything the dashboard shows: current scan + settled record + calibration.
-function prepareReportData({ generatedAt, windowHours, config, games, calibration, ledgerEntries }) {
+function prepareReportData({ generatedAt, windowHours, config, games, calibration, ledgerEntries, multis }) {
   const entries = ledgerEntries || [];
 
   // Record: earliest flagged snapshot per outcome, settled only, flat 1-unit stakes.
@@ -77,13 +77,37 @@ function prepareReportData({ generatedAt, windowHours, config, games, calibratio
     });
   }
 
+  // Shadow-signal scoreboard: research signals logged on every entry, scored
+  // live as games settle. A signal earns promotion only with positive live ROI.
+  const settledLast = ledger
+    .lastSnapshots(entries)
+    .filter((e) => e.settled && (e.result === 'won' || e.result === 'lost'));
+  const scoreShadow = (list) => {
+    if (!list.length) return { n: 0, roi: null, clv: null };
+    const pnl = list.reduce((s, e) => s + (e.result === 'won' ? e.odds - 1 : -1), 0);
+    const clvs = list.filter((e) => e.clv != null);
+    return {
+      n: list.length,
+      roi: pnl / list.length,
+      clv: clvs.length ? clvs.reduce((s, e) => s + e.clv, 0) / clvs.length : null,
+    };
+  };
+  const shadows = {
+    driftCrowd: scoreShadow(settledLast.filter((e) => e.shadowDriftCrowd)),
+    consensus: scoreShadow(
+      settledLast.filter((e) => e.consensusEv != null && e.consensusEv >= 0.04 && e.outcome !== 'X' && e.odds <= 6)
+    ),
+  };
+
   return {
     generatedAt,
     windowHours,
     config,
     games,
+    multis: multis || null,
     record,
     buckets,
+    shadows,
     calibration: calibration || null,
     sportLabels: SPORT_LABELS,
   };
@@ -169,6 +193,19 @@ function buildReport(data) {
   .block .pk { font-weight: 600; line-height: 1.5; }
   .block.none { opacity: 0.55; }
   .bestmark { color: var(--good-text); font-size: 11px; font-weight: 650; margin-left: 4px; white-space: nowrap; }
+  .multiControls { margin: 0 16px 12px; }
+  .multiFoot { margin: 12px 16px 10px !important; }
+  .multis { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; padding: 0 16px 14px; }
+  .multi { border: 1px solid var(--grid); border-radius: 10px; padding: 10px 12px; }
+  .multi.top { border-color: var(--good); }
+  .multi .mh { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 2px; }
+  .multi .mo { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .multi .ms { color: var(--ink-2); font-size: 12px; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+  .multi ol { margin: 0; padding: 0; list-style: none; counter-reset: leg; }
+  .multi li { counter-increment: leg; border-top: 1px solid var(--grid); padding: 6px 0 6px 20px; position: relative; }
+  .multi li::before { content: counter(leg); position: absolute; left: 0; top: 6px; color: var(--muted); font-size: 11px; }
+  .multi li .lp { font-weight: 600; }
+  .multi li .lo { float: right; font-variant-numeric: tabular-nums; font-weight: 600; }
   .chart { padding: 4px 16px 12px; }
   .chart svg { width: 100%; height: 150px; display: block; }
   footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
@@ -207,6 +244,13 @@ function buildReport(data) {
     <p class="note blocksNote">The top flagged edge in each upcoming 3-hour block across the next 24 h · respects the sport filter &amp; search.</p>
     <div class="blocks" id="blocks"></div>
   </div>
+  <section id="multiSec" hidden>
+    <h2 id="multiH2">Multibets</h2>
+    <p class="note" id="multiNote"></p>
+    <div class="controls multiControls" id="multiControls"></div>
+    <div class="multis" id="multis"></div>
+    <p class="note multiFoot" id="multiFoot"></p>
+  </section>
   <section>
     <h2>Flagged value bets — this scan</h2>
     <p class="note">Debiased crowd conviction + form beats the bet365 price by the required edge. Verify the live price on bet365 before betting.</p>
@@ -253,6 +297,10 @@ const pickLabel = (g, name) =>
   '<span class="sideDot ' + sideClass(name) + '"></span>' + esc(outcomeLabel(g, name))
   + '<span class="homeaway">(' + sideTag(name) + ')</span>';
 const WARN_TEXT = { drift: '⚠ price drifting out', absences: '⚠ key absences', sharp: '⚠ Pinnacle sides with bet365' };
+const shadowTxt = (s) => !s || !s.n
+  ? 'collecting…'
+  : s.n + ' settled, roi ' + (s.roi >= 0 ? '+' : '') + (s.roi * 100).toFixed(1) + '%'
+    + (s.clv != null ? ', clv ' + (s.clv >= 0 ? '+' : '') + (s.clv * 100).toFixed(1) + '%' : '');
 
 let sportFilter = null, query = '', scope = 'all';
 // All time filtering is relative to when the page is VIEWED, not when it was
@@ -341,6 +389,53 @@ function renderBlocks() {
   }
   document.getElementById('blocksWrap').hidden = cards.length === 0;
   document.getElementById('blocks').innerHTML = cards.join('');
+}
+// Multibets are built server-side (leg pool → pruned combination search); the page
+// only re-sorts them and drops any whose legs have kicked off since the scan.
+let multiWindow = 0, multiSort = 'prob';
+function renderMultis() {
+  const sec = document.getElementById('multiSec');
+  if (!DATA.multis) { sec.hidden = true; return; }
+  const win = DATA.multis.windows[multiWindow];
+  const live = win.multis.filter(m => m.firstStart > NOW() - 300);
+  live.sort((a, b) => multiSort === 'ev' ? b.ev - a.ev || b.prob - a.prob : b.prob - a.prob || b.ev - a.ev);
+  sec.hidden = false;
+  const s = DATA.multis.settings;
+  document.getElementById('multiH2').textContent =
+    'Multibets — ' + s.minLegs + '–' + s.maxLegs + ' legs, $' + s.minOdds + '–$' + s.maxOdds;
+  document.getElementById('multiNote').innerHTML =
+    'Best combinations of the model\\'s strongest picks across the next ' + win.hours + ' h. '
+    + 'One leg per match, max ' + s.maxPerTournament + ' per competition, and each leg\\'s probability is shrunk '
+    + Math.round(s.shrinkToMarket * 100) + '% toward the market price before multiplying. '
+    + '<b>Multi EV compounds model error</b> — six legs each 3 points optimistic is a multi ~20% overstated, so read the '
+    + 'EV as a ranking, not a promise, and compare it with what the market implies. Re-check every leg on bet365.';
+  document.getElementById('multiFoot').textContent = live.length
+    ? win.poolSize + ' qualifying legs · ' + (win.candidates || 0).toLocaleString() + ' combinations searched'
+    : '';
+  const wrap = document.getElementById('multis');
+  if (!live.length) {
+    wrap.innerHTML = '<div class="dim">Every multi in this window has a leg that already kicked off — run a fresh scan.</div>';
+    return;
+  }
+  wrap.innerHTML = live.map((m, i) =>
+    '<div class="multi' + (i === 0 ? ' top' : '') + '">'
+    + '<div class="mh"><span class="mo">$' + m.odds.toFixed(2) + '</span>'
+    + '<span class="dim">' + m.legCount + ' legs</span>'
+    + '<span class="badge">' + fmtPct(m.prob) + ' likely</span>'
+    + (m.ev > 0 ? '<span class="badge">EV +' + fmtPct(m.ev) + '</span>' : '<span class="dim">EV ' + fmtPct(m.ev) + '</span>')
+    + '</div>'
+    + '<div class="ms">Fair price $' + m.fairOdds.toFixed(2) + ' · market says ' + fmtPct(m.marketProb)
+    + ' · ' + m.flaggedLegs + '/' + m.legCount + ' legs flagged · last leg ' + startsIn(m.lastStart) + '</div>'
+    + '<ol>' + m.legs.map(l =>
+      '<li><span class="lo">' + fmtOdds(l.odds) + '</span>'
+      + '<span class="lp"><span class="sideDot ' + sideClass(l.outcome) + '"></span>' + esc(l.pick) + '</span>'
+      + ' <span class="dim">' + fmtPct(l.prob) + '</span>'
+      + '<div class="meta"><a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.home) + ' v ' + esc(l.away) + '</a>'
+      + ' · ' + esc(sportLabel(l.sport)) + ' · ' + startsIn(l.startTimestamp) + '</div>'
+      + (l.warnings.length ? '<div class="meta">' + warnBadges(l) + '</div>' : '')
+      + '</li>').join('')
+    + '</ol></div>'
+  ).join('');
 }
 function matchCell(g) {
   return '<td><div class="teams"><a href="' + esc(g.url) + '" target="_blank" rel="noopener">' + esc(g.home) + ' v ' + esc(g.away) + '</a></div>'
@@ -458,7 +553,10 @@ function renderCalibration() {
     + DATA.buckets.map(b =>
       '<tr><td>' + b.label + '</td><td class="num">' + b.n + '</td><td class="num">' + fmtPct(b.predicted) + '</td><td class="num">' + fmtPct(b.actual) + '</td></tr>'
     ).join('')
-    + '<tr><td colspan="4" class="dim">Vote weight in use: ' + esc(vw) + '</td></tr>';
+    + '<tr><td colspan="4" class="dim">Vote weight in use: ' + esc(vw) + '</td></tr>'
+    + '<tr><td colspan="4" class="dim">Shadow signals (log-only, promote on live evidence): '
+    + 'crowd-side drifted out — ' + shadowTxt(DATA.shadows && DATA.shadows.driftCrowd)
+    + ' · bet365 outlier vs 2nd book — ' + shadowTxt(DATA.shadows && DATA.shadows.consensus) + '</td></tr>';
 }
 
 function render() { renderBlocks(); renderFlags(); renderAll(); }
@@ -514,7 +612,27 @@ function render() { renderBlocks(); renderFlags(); renderAll(); }
     query = e.target.value.trim().toLowerCase();
     render();
   });
+  if (DATA.multis) {
+    const mc = document.getElementById('multiControls');
+    mc.innerHTML = DATA.multis.windows.map((w, i) =>
+      '<button class="chip' + (i === 0 ? ' on' : '') + '" data-mwin="' + i + '">Next ' + w.hours + ' h</button>').join('')
+      + '<span style="width:10px"></span>'
+      + '<button class="chip on" data-msort="prob">Likeliest</button>'
+      + '<button class="chip" data-msort="ev">Best value</button>';
+    mc.addEventListener('click', (e) => {
+      const chip = e.target.closest('.chip');
+      if (!chip) return;
+      const group = chip.dataset.mwin !== undefined ? '[data-mwin]' : '[data-msort]';
+      mc.querySelectorAll('.chip' + group).forEach(c => c.classList.remove('on'));
+      chip.classList.add('on');
+      if (chip.dataset.mwin !== undefined) multiWindow = Number(chip.dataset.mwin);
+      else multiSort = chip.dataset.msort;
+      renderMultis();
+    });
+  }
+
   render();
+  renderMultis();
   renderRecord();
   renderCalibration();
 })();
