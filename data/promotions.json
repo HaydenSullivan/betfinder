@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-22T06:16:27.940Z",
+  "updatedAt": "2026-07-22T07:02:21.223Z",
   "rules": {
     "minSettled": 50,
     "promoteRoi": 0.02,
@@ -32,11 +32,11 @@
     "bigDrift": {
       "status": "shadow",
       "label": "extreme drift ≥20%",
-      "n": 39,
-      "roi": 0.4441,
-      "clv": 0.12249,
+      "n": 41,
+      "roi": 0.3737,
+      "clv": 0.11342,
       "clvMedian": 0.08333,
-      "beatClose": 0.641,
+      "beatClose": 0.634,
       "since": "2026-07-21T10:40:44.579Z"
     },
     "voteSurge": {
