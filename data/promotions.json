@@ -1,9 +1,10 @@
 {
-  "updatedAt": "2026-07-22T03:10:30.248Z",
+  "updatedAt": "2026-07-22T06:16:27.940Z",
   "rules": {
     "minSettled": 50,
     "promoteRoi": 0.02,
     "promoteClv": 0,
+    "promoteClvMedian": 0,
     "demoteRoi": 0,
     "demoteClv": -0.005
   },
@@ -11,9 +12,11 @@
     "driftCrowd": {
       "status": "shadow",
       "label": "crowd-side drifted out",
-      "n": 26,
-      "roi": -0.0242,
-      "clv": -0.00047,
+      "n": 27,
+      "roi": -0.0604,
+      "clv": -0.00092,
+      "clvMedian": 0,
+      "beatClose": 0.222,
       "since": "2026-07-21T10:32:01.751Z"
     },
     "consensus": {
@@ -22,14 +25,18 @@
       "n": 5,
       "roi": 0.2076,
       "clv": 0,
+      "clvMedian": 0,
+      "beatClose": 0,
       "since": "2026-07-21T10:32:01.751Z"
     },
     "bigDrift": {
       "status": "shadow",
       "label": "extreme drift ≥20%",
-      "n": 35,
-      "roi": 0.452,
-      "clv": 0.11764,
+      "n": 39,
+      "roi": 0.4441,
+      "clv": 0.12249,
+      "clvMedian": 0.08333,
+      "beatClose": 0.641,
       "since": "2026-07-21T10:40:44.579Z"
     },
     "voteSurge": {
@@ -38,6 +45,8 @@
       "n": 1,
       "roi": 0.5,
       "clv": 0,
+      "clvMedian": 0,
+      "beatClose": 0,
       "since": "2026-07-21T10:49:55.753Z"
     }
   }

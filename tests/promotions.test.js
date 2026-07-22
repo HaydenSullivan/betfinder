@@ -2,14 +2,33 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { nextStatus, applyPromotedSignals, researchFields } = require('../src/promotions');
 
-const rules = { minSettled: 50, promoteRoi: 0.02, promoteClv: 0, demoteRoi: 0, demoteClv: -0.005 };
+const rules = { minSettled: 50, promoteRoi: 0.02, promoteClv: 0, promoteClvMedian: 0, demoteRoi: 0, demoteClv: -0.005 };
 
 test('gate: stays shadow until n, roi and clv all clear the bar', () => {
-  assert.strictEqual(nextStatus('shadow', { n: 30, roi: 0.2, clv: 0.05 }, rules), 'shadow'); // too few
-  assert.strictEqual(nextStatus('shadow', { n: 60, roi: 0.01, clv: 0.05 }, rules), 'shadow'); // roi short
-  assert.strictEqual(nextStatus('shadow', { n: 60, roi: 0.1, clv: -0.01 }, rules), 'shadow'); // clv negative
-  assert.strictEqual(nextStatus('shadow', { n: 60, roi: 0.1, clv: null }, rules), 'shadow'); // clv unknown
-  assert.strictEqual(nextStatus('shadow', { n: 60, roi: 0.1, clv: 0.01 }, rules), 'promoted');
+  const ok = { clvMedian: 0.01 };
+  assert.strictEqual(nextStatus('shadow', { n: 30, roi: 0.2, clv: 0.05, ...ok }, rules), 'shadow'); // too few
+  assert.strictEqual(nextStatus('shadow', { n: 60, roi: 0.01, clv: 0.05, ...ok }, rules), 'shadow'); // roi short
+  assert.strictEqual(nextStatus('shadow', { n: 60, roi: 0.1, clv: -0.01, ...ok }, rules), 'shadow'); // clv negative
+  assert.strictEqual(nextStatus('shadow', { n: 60, roi: 0.1, clv: null, ...ok }, rules), 'shadow'); // clv unknown
+  assert.strictEqual(nextStatus('shadow', { n: 60, roi: 0.1, clv: 0.01, ...ok }, rules), 'promoted');
+});
+
+test('gate: a mean CLV carried by one outlier cannot promote', () => {
+  // Mean is strongly positive but the typical bet never beat the close.
+  assert.strictEqual(nextStatus('shadow', { n: 60, roi: 0.4, clv: 0.12, clvMedian: 0 }, rules), 'promoted');
+  assert.strictEqual(nextStatus('shadow', { n: 60, roi: 0.4, clv: 0.12, clvMedian: -0.001 }, rules), 'shadow');
+  assert.strictEqual(nextStatus('shadow', { n: 60, roi: 0.4, clv: 0.12, clvMedian: null }, rules), 'shadow');
+});
+
+test('scoreSignal reports median and beat-close alongside the mean', () => {
+  const { scoreSignal } = require('../src/promotions');
+  const mk = (i, odds, closingOdds, result) => ({ eventId: i, outcome: '1', scanAt: 't' + i, settled: true, result, odds, closingOdds, shadowDriftCrowd: true });
+  // Four picks that never beat the close, plus one longshot that collapsed.
+  const entries = [mk(1, 15, 5, 'lost'), mk(2, 2, 2, 'won'), mk(3, 2, 2, 'lost'), mk(4, 2, 2, 'won'), mk(5, 2, 2, 'lost')];
+  const s = scoreSignal(entries, (e) => e.shadowDriftCrowd);
+  assert.ok(s.clv > 0, 'mean is dragged positive by the outlier');
+  assert.strictEqual(s.clvMedian, 0, 'median exposes that the typical bet gained nothing');
+  assert.strictEqual(s.beatClose, 0.2, 'only 1 of 5 beat the close');
 });
 
 test('gate: hysteresis — promoted survives a dip, demotes on decay', () => {

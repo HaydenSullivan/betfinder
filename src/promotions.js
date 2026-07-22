@@ -111,11 +111,16 @@ function scoreSignal(entries, match) {
   const pnl = list.reduce((s, e) => s + (e.result === 'won' ? e.odds - 1 : -1), 0);
   // CLV in implied-probability points — the odds-ratio form lets one longshot
   // swamp the average, which would let a signal promote on a single outlier.
-  const clvs = list.filter((e) => e.closingOdds);
+  const pts = list.filter((e) => e.closingOdds).map((e) => 1 / e.closingOdds - 1 / e.odds).sort((a, b) => a - b);
+  const median = pts.length ? pts[Math.floor(pts.length / 2)] : null;
   return {
     n: list.length,
     roi: Number((pnl / list.length).toFixed(4)),
-    clv: clvs.length ? Number((clvs.reduce((s, e) => s + (1 / e.closingOdds - 1 / e.odds), 0) / clvs.length).toFixed(5)) : null,
+    clv: pts.length ? Number((pts.reduce((s, x) => s + x, 0) / pts.length).toFixed(5)) : null,
+    // The median is the honest robustness check: a mean CLV can be carried by
+    // one collapsed longshot, a median cannot.
+    clvMedian: median === null ? null : Number(median.toFixed(5)),
+    beatClose: pts.length ? Number((pts.filter((x) => x > 0.0005).length / pts.length).toFixed(3)) : null,
   };
 }
 
@@ -126,7 +131,10 @@ function nextStatus(was, stats, rules) {
     const ready =
       stats.n >= rules.minSettled &&
       stats.roi !== null && stats.roi >= rules.promoteRoi &&
-      stats.clv !== null && stats.clv >= rules.promoteClv;
+      stats.clv !== null && stats.clv >= rules.promoteClv &&
+      // Median guard: a signal whose average CLV rests on one outlier does not
+      // promote. Live data showed a mean of +12pts sitting on a median of 0.
+      stats.clvMedian !== null && stats.clvMedian >= (rules.promoteClvMedian ?? 0);
     return ready ? 'promoted' : 'shadow';
   }
   const decayed = stats.roi !== null && (stats.roi < rules.demoteRoi || (stats.clv !== null && stats.clv < rules.demoteClv));

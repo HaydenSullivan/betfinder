@@ -445,8 +445,11 @@ const pickLabel = (g, name) =>
 const WARN_TEXT = { drift: '⚠ price drifting out', absences: '⚠ key absences', sharp: '⚠ Pinnacle sides with bet365' };
 const shadowTxt = (s) => !s || !s.n
   ? 'collecting…'
-  : s.n + ' settled, roi ' + (s.roi >= 0 ? '+' : '') + (s.roi * 100).toFixed(1) + '%'
-    + (s.clv != null ? ', clv ' + (s.clv >= 0 ? '+' : '') + (s.clv * 100).toFixed(2) + 'pts' : '');
+  : s.n + '/50 settled, roi ' + (s.roi >= 0 ? '+' : '') + (s.roi * 100).toFixed(1) + '%'
+    + (s.clv != null ? ', clv ' + (s.clv >= 0 ? '+' : '') + (s.clv * 100).toFixed(2) + 'pts' : '')
+    // Median and beat-close are shown because a mean CLV can hide behind one outlier.
+    + (s.clvMedian != null ? ' (median ' + (s.clvMedian >= 0 ? '+' : '') + (s.clvMedian * 100).toFixed(2) + ')' : '')
+    + (s.beatClose != null ? ', beat close ' + (s.beatClose * 100).toFixed(0) + '%' : '');
 const SIGNAL_BADGE = { driftCrowd: '⚡ drift signal', consensus: '⚡ consensus signal', bigDrift: '⚡ big-drift signal', voteSurge: '⚡ vote-surge signal' };
 const signalLine = (key, s) => {
   const p = DATA.promotions && DATA.promotions.signals && DATA.promotions.signals[key];

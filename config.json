@@ -57,6 +57,7 @@
     "minSettled": 50,
     "promoteRoi": 0.02,
     "promoteClv": 0,
+    "promoteClvMedian": 0,
     "demoteRoi": 0,
     "demoteClv": -0.005
   },
