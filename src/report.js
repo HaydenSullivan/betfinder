@@ -585,11 +585,17 @@ function renderMultis() {
   const live = win.multis.filter(m => m.firstStart > NOW() - 300);
   live.sort((a, b) => multiSort === 'ev' ? b.ev - a.ev || b.prob - a.prob : b.prob - a.prob || b.ev - a.ev);
   sec.hidden = false;
-  const s = DATA.multis.settings;
+  // Each window can carry its own leg rules (a 3 h window has to relax them),
+  // so describe the window actually being shown.
+  const s = { ...DATA.multis.settings, ...(win.opts || {}) };
   document.getElementById('multiH2').textContent =
-    'Multibets — ' + s.minLegs + '–' + s.maxLegs + ' legs, $' + s.minOdds + '–$' + s.maxOdds;
+    'Multibets — next ' + win.hours + ' h · ' + s.minLegs + '–' + s.maxLegs + ' legs, $' + s.minOdds + '–$' + s.maxOdds;
   document.getElementById('multiNote').innerHTML =
     'Best combinations of the model\\'s strongest picks across the next ' + win.hours + ' h. '
+    + (win.hours <= 3
+      ? '<b>Short-window caveat:</b> inside 3 h few games have a settled crowd yet, so this window relaxes its filters ('
+        + s.minLegVotes + '+ votes vs 300, ' + s.minLegs + '+ legs, $' + s.minOdds + '+) — thinner evidence per leg than the longer windows. '
+      : '')
     + 'One leg per match, max ' + s.maxPerTournament + ' per competition, max ' + s.maxPerSport + ' per sport, and each leg\\'s probability is shrunk '
     + Math.round(s.shrinkToMarket * 100) + '% toward the market price before multiplying. '
     + '<b>Multi EV compounds model error</b> — six legs each 3 points optimistic is a multi ~20% overstated, so read the '
@@ -600,8 +606,16 @@ function renderMultis() {
   const wrap = document.getElementById('multis');
   const moreBtn = document.getElementById('multiMore');
   if (!live.length) {
-    wrap.innerHTML = '<div class="empty">Every multi in this window has a leg that already kicked off — run a fresh scan.</div>';
+    // Distinguish "the slate can't support it" from "the scan went stale".
+    const why = win.multis.length
+      ? 'Every multi in this window has a leg that already kicked off — a fresh scan is due within the hour.'
+      : 'Not enough qualifying legs start within ' + win.hours + ' h right now: only ' + win.poolSize
+        + ' outcome' + (win.poolSize === 1 ? '' : 's') + ' cleared the filters, and a multi needs ' + s.minLegs + '. '
+        + 'Short windows are slate-dependent — matches this close to kickoff are often minor fixtures with almost no crowd '
+        + 'behind them. Try a longer window, or check back when a busier block is approaching.';
+    wrap.innerHTML = '<div class="empty">' + why + '</div>';
     if (moreBtn) moreBtn.hidden = true;
+    document.getElementById('multiFoot').textContent = '';
     return;
   }
   // Only a few multis are shown up front: each card is tall, and ten of them

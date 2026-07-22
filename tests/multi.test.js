@@ -143,6 +143,41 @@ test('diverse selection skips near-identical multis', () => {
   assert.strictEqual(picked[1].legs[1].eventId, 6);
 });
 
+test('a short window can carry its own relaxed leg rules', () => {
+  // Games an hour out with small crowds — typical of a 3 h window.
+  const soon = [1, 2, 3].map((i) =>
+    game(i, 1.9, 0.6, { startTimestamp: NOW + 3600, totalVotes: 120 }));
+
+  // Default rules (300 votes, 4 legs, $10 min) cannot build anything from these.
+  const strict = buildMultis(soon, { multi: { windows: [3] } }, NOW);
+  assert.strictEqual(strict, null, 'standard filters reject small-crowd games');
+
+  // The same games with a per-window override do build a multi.
+  const relaxed = buildMultis(soon, {
+    multi: { windows: [{ hours: 3, minLegs: 3, minOdds: 5, minLegVotes: 100 }] },
+  }, NOW);
+  assert.ok(relaxed, 'per-window overrides let the short window build');
+  const w = relaxed.windows.find((x) => x.hours === 3);
+  assert.ok(w.multis.length >= 1);
+  assert.strictEqual(w.multis[0].legCount, 3, 'three legs, per the override');
+  assert.ok(w.multis[0].odds >= 5);
+  assert.strictEqual(w.opts.minLegVotes, 100, 'window carries its own settings for the UI');
+});
+
+test('an empty window is kept so the UI can explain why it is empty', () => {
+  const games = [1, 2, 3, 4].map((i) => game(i, 1.9, 0.62));
+  // 3 h window has nothing (games are 1 h out but crowd is fine, so raise the bar);
+  // 24 h window still builds, and both windows survive into the result.
+  const result = buildMultis(games, {
+    multi: { windows: [{ hours: 3, minLegVotes: 99999 }, 24] },
+  }, NOW);
+  assert.ok(result, 'result exists because one window built');
+  assert.strictEqual(result.windows.length, 2, 'the empty window is retained');
+  const short = result.windows.find((w) => w.hours === 3);
+  assert.strictEqual(short.multis.length, 0);
+  assert.strictEqual(short.poolSize, 0, 'pool size is reported so the UI can say why');
+});
+
 test('buildMultis returns a shortlist per window and honours enabled:false', () => {
   const games = [];
   for (let i = 1; i <= 10; i++) games.push(game(i, 1.7, 0.72));

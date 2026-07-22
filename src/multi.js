@@ -215,11 +215,23 @@ function selectDiverse(ranked, count, maxSharedLegs) {
   return picked;
 }
 
+// A window entry is either a number of hours or an object with per-window
+// overrides: { hours: 3, minLegVotes: 100, ... }. Short windows need their own
+// profile — inside 3 h barely any game has a big crowd yet, so the standard
+// leg filters leave nothing to combine.
+function windowOptions(config, entry) {
+  const base = { ...DEFAULTS, ...(config.multi || {}) };
+  return typeof entry === 'object' && entry !== null
+    ? { ...base, ...entry }
+    : { ...base, hours: entry };
+}
+
 // One window (e.g. the next 12 h): pool → search → two rankings → merged shortlist.
-function buildWindow(games, config, hours, nowSec) {
-  const opts = { ...DEFAULTS, ...(config.multi || {}), hours };
+function buildWindow(games, config, entry, nowSec) {
+  const opts = windowOptions(config, entry);
+  const hours = opts.hours;
   const pool = buildLegPool(games, opts, nowSec);
-  const empty = { hours, poolSize: pool.length, multis: [], truncated: false };
+  const empty = { hours, poolSize: pool.length, multis: [], truncated: false, opts };
   if (pool.length < opts.minLegs) return empty;
 
   const { combos, total, truncated } = searchCombos(pool, opts);
@@ -240,18 +252,19 @@ function buildWindow(games, config, hours, nowSec) {
     }
   }
   shortlist.sort((a, b) => b.prob - a.prob);
-  return { hours, poolSize: pool.length, candidates: total, truncated, multis: shortlist };
+  return { hours, poolSize: pool.length, candidates: total, truncated, multis: shortlist, opts };
 }
 
 // Entry point: one shortlist per configured window, plus the settings used.
 function buildMultis(games, config, nowSec = Date.now() / 1000) {
   const opts = { ...DEFAULTS, ...(config.multi || {}) };
   if (!opts.enabled) return null;
+  // Empty windows are kept so the UI can still offer the choice and explain
+  // why it is empty — a silently missing window looks like a broken feature.
   const windows = opts.windows
-    .filter((h) => h > 0)
-    .map((hours) => buildWindow(games, config, hours, nowSec))
-    .filter((w) => w.multis.length);
-  if (!windows.length) return null;
+    .filter((e) => (typeof e === 'object' && e !== null ? e.hours > 0 : e > 0))
+    .map((entry) => buildWindow(games, config, entry, nowSec));
+  if (!windows.some((w) => w.multis.length)) return null;
   return {
     windows,
     settings: {

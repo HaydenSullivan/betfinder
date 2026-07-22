@@ -63,6 +63,14 @@
   "multi": {
     "enabled": true,
     "windows": [
+      {
+        "hours": 3,
+        "minLegs": 3,
+        "minOdds": 5,
+        "minLegVotes": 100,
+        "maxPerSport": 3,
+        "minLegProb": 0.45
+      },
       12,
       24
     ],
