@@ -1,26 +1,26 @@
 {
-  "updatedAt": "2026-07-23T07:00:09.659Z",
-  "samples": 5412,
+  "updatedAt": "2026-07-23T11:00:30.369Z",
+  "samples": 5636,
   "global": {
-    "voteWeight": 0.125,
-    "logLoss": 0.58213,
-    "samples": 5412
+    "voteWeight": 0.1,
+    "logLoss": 0.58328,
+    "samples": 5636
   },
   "sports": {
     "football": {
-      "voteWeight": 0.125,
-      "logLoss": 0.54017,
-      "samples": 1296
+      "voteWeight": 0.15,
+      "logLoss": 0.53815,
+      "samples": 1308
     },
     "tennis": {
-      "voteWeight": 0.05,
-      "logLoss": 0.54032,
-      "samples": 2298
+      "voteWeight": 0,
+      "logLoss": 0.54097,
+      "samples": 2382
     },
     "table-tennis": {
       "voteWeight": 0.6,
-      "logLoss": 0.67075,
-      "samples": 1512
+      "logLoss": 0.67196,
+      "samples": 1636
     }
   },
   "sportGates": {}
